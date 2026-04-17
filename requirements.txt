@@ -7,3 +7,5 @@ agno
 jinja2
 google-genai
 httpx
+gunicorn
+tavily-python
