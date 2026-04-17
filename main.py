@@ -1,10 +1,9 @@
 """
 Autonomous Multi-Agent Financial Education System — FastAPI Backend
-Now with Detailed Logging + Debugging + Stability
+Stable + Debugged + Production Ready
 """
 
 import os
-import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -24,33 +23,35 @@ from agno.tools.reasoning import ReasoningTools
 from agno.tools.tavily import TavilyTools
 
 import dotenv
+from chatbot_logic import generate_followups, tavily_search, generate_final_answer
+
+# Session state for Analytics Chatbot
+chatbot_sessions = {}
+
 
 # ─────────────────────────────────────────────
-# LOGGING CONFIG
+# LOGGING
 # ─────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,  # change to DEBUG for deep logs
+    level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
-
 logger = logging.getLogger("finance-ai")
 
 # ─────────────────────────────────────────────
-# LOAD ENV
+# ENV
 # ─────────────────────────────────────────────
 dotenv.load_dotenv()
 
-# API keys will be checked during build_team to avoid startup crashes if env is missing
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-
-logger.info("🔑 Checking environment variables...")
 
 # ─────────────────────────────────────────────
 # REQUEST MODEL
 # ─────────────────────────────────────────────
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User financial query")
+    session_id: str = Field(default="default_session")
 
 
 # ─────────────────────────────────────────────
@@ -60,26 +61,26 @@ def build_team() -> Team:
     logger.info("🧠 Initializing Gemini model...")
 
     if not GEMINI_API_KEY:
-        logger.error("❌ GEMINI_API_KEY missing")
-        # Don't crash here, but the team will fail to run
-    
+        raise ValueError("❌ GEMINI_API_KEY is missing")
+
+    # ✅ Stable model
     gemini = Gemini(
         id="gemini-3-flash-preview",
-        api_key=GEMINI_API_KEY or "MISSING_KEY"
+        api_key=GEMINI_API_KEY
     )
 
     tools = []
 
-    # Tavily init
+    # Tavily (optional)
     if TAVILY_API_KEY:
         try:
-            logger.info("🌐 Initializing Tavily tools...")
+            logger.info("🌐 Initializing Tavily...")
             tavily = TavilyTools(api_key=TAVILY_API_KEY)
             tools.append(tavily)
         except Exception as e:
-            logger.error(f"❌ Tavily init failed: {e}")
+            logger.error(f"Tavily init failed: {e}")
 
-    # ── Agents ──
+    # ───────── Agents ─────────
     logger.info("👥 Creating agents...")
 
     budget_agent = Agent(
@@ -90,8 +91,7 @@ def build_team() -> Team:
         instructions=[
             "You are a compassionate budgeting coach.",
             "Find one spending leak and fix it.",
-            "When using tools or providing info, if you found a source, include it as [SOURCE: url].",
-            "Always start your response segment with [AGENT: Budgeting Analyst]."
+            "Always start with [AGENT: Budgeting Analyst].",
         ],
     )
 
@@ -103,8 +103,7 @@ def build_team() -> Team:
         instructions=[
             "Help build savings habits.",
             "Encourage emergency fund.",
-            "Include sources as [SOURCE: url] if applicable.",
-            "Always start your response segment with [AGENT: Savings Strategist]."
+            "Always start with [AGENT: Savings Strategist].",
         ],
     )
 
@@ -115,13 +114,13 @@ def build_team() -> Team:
         tools=tools,
         instructions=[
             "Explain investing simply.",
-            "No stock recommendations.",
-            "Include sources as [SOURCE: url] if applicable.",
-            "Always start your response segment with [AGENT: Investment Educator]."
+            "Do NOT give stock tips.",
+            "Always start with [AGENT: Investment Educator].",
         ],
     )
 
-    logger.info("🧩 Building team supervisor...")
+    # ───────── Team ─────────
+    logger.info("🧩 Building team...")
 
     team = Team(
         name="Financial Advisor",
@@ -131,96 +130,68 @@ def build_team() -> Team:
         tools=[ReasoningTools(add_instructions=True)] + tools,
         markdown=True,
         instructions=[
-            "Structure response:",
-            "1. Understanding",
-            "2. Explanation",
-            "3. Action steps",
-            "4. Next step",
-            "5. Disclaimer",
-            "Rules:",
-            "- When you consult a specialist, the output should begin with [AGENT: Specialist Name].",
-            "- When you provide the final consolidated answer, start with [AGENT: Financial Advisor].",
-            "- For any internet search results, include sources as [SOURCE: URL].",
+            "You are a Financial Advisor leading expert agents.",
+            "Ask follow-up questions if user input is vague.",
+            "Structure output clearly.",
+            "Final answer must start with [AGENT: Financial Advisor].",
         ],
     )
 
-    logger.info("✅ AI Team ready")
-
+    logger.info("✅ Team ready")
     return team
 
 
 # ─────────────────────────────────────────────
-# STREAMING RESPONSE
+# STREAMING
 # ─────────────────────────────────────────────
 async def stream_response(team: Team, query: str, request_id: str) -> AsyncGenerator[str, None]:
-    logger.info(f"📥 [{request_id}] Incoming query: {query}")
+    logger.info(f"📥 [{request_id}] Query: {query}")
 
     try:
-        # Using team.run with stream=True for real-time streaming
         for chunk in team.run(query, stream=True):
-            if hasattr(chunk, 'content') and chunk.content:
+            if hasattr(chunk, "content") and chunk.content:
                 yield chunk.content
             elif isinstance(chunk, str):
                 yield chunk
-            
-            # Optional: yield a tiny delay for smoother UI if needed
-            # await asyncio.sleep(0.01)
 
     except Exception as e:
-        logger.exception(f"❌ [{request_id}] Agent execution failed")
-        yield f"Error: {str(e)}"
-        return
-
-    logger.info(f"🏁 [{request_id}] Streaming complete")
+        logger.exception(f"❌ [{request_id}] Error")
+        yield f"\nError: {str(e)}"
 
 
 # ─────────────────────────────────────────────
-# FASTAPI LIFESPAN
+# LIFESPAN
 # ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 Starting application...")
+    logger.info("🚀 Starting app...")
 
     try:
         app.state.team = build_team()
-        logger.info("✅ AI Team successfully initialized")
     except Exception as e:
-        logger.error(f"❌ Failed to initialize AI team: {e}")
+        logger.error(f"❌ Init failed: {e}")
         app.state.team = None
 
-    logger.info("✅ App startup complete")
     yield
-    logger.info("🛑 Shutting down...")
+    logger.info("🛑 Shutdown")
 
 
 # ─────────────────────────────────────────────
-# FASTAPI APP
+# APP
 # ─────────────────────────────────────────────
 app = FastAPI(
-    title="Financial AI Multi-Agent API",
-    version="4.0.0",
+    title="Financial AI API",
+    version="5.0.0",
     lifespan=lifespan,
 )
 
-# ─────────────────────────────────────────────
-# PATHS & TEMPLATES
-# ─────────────────────────────────────────────
+# Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# Verify directories exist to prevent 500 errors
-logger.info(f"📂 Templates Dir: {TEMPLATES_DIR}")
-logger.info(f"📂 Static Dir: {STATIC_DIR}")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
-if not os.path.exists(TEMPLATES_DIR):
-    logger.error(f"❌ Templates directory NOT FOUND: {TEMPLATES_DIR}")
-if not os.path.exists(STATIC_DIR):
-    logger.error(f"❌ Static directory NOT FOUND: {STATIC_DIR}")
-
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -229,38 +200,131 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ─────────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    logger.info("🌐 Serving UI")
-    return templates.TemplateResponse(
-        request=request, name="index.html", context={}
-    )
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
     request_id = str(uuid.uuid4())[:8]
 
-    logger.info(f"🆔 Request ID: {request_id}")
-
     if not req.query.strip():
-        logger.warning(f"⚠️ [{request_id}] Empty query")
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
+        raise HTTPException(status_code=400, detail="Empty query")
 
     if not app.state.team:
-        logger.error(f"⚠️ [{request_id}] Chat requested but AI team is not initialized")
-        raise HTTPException(
-            status_code=503, 
-            detail="AI Service is currently unavailable. Please check server logs for configuration errors (e.g. missing API keys)."
-        )
-
-    team = app.state.team
+        raise HTTPException(status_code=503, detail="AI not initialized")
 
     return StreamingResponse(
-        stream_response(team, req.query, request_id),
+        stream_response(app.state.team, req.query, request_id),
         media_type="text/plain"
     )
+
+
+# ─────────────────────────────────────────────
+# ANALYTICS CHATBOT (Step-by-Step Flow)
+# ─────────────────────────────────────────────
+
+class ChatbotQuery(BaseModel):
+    user_input: str
+    session_id: str
+
+@app.post("/chatbot/query")
+async def chatbot_query(req: ChatbotQuery):
+    sid = req.session_id
+    user_input = req.user_input.strip()
+
+    if sid not in chatbot_sessions:
+        chatbot_sessions[sid] = {
+            "questions": [],
+            "answers": [],
+            "current_q_index": 0,
+            "pending_question": None,
+            "chat_history": []
+        }
+
+    session = chatbot_sessions[sid]
+
+    # STEP 1: First interaction → generate followups
+    if not session["questions"]:
+        session["pending_question"] = user_input
+        session["questions"] = generate_followups(user_input)
+        session["current_q_index"] = 0
+        session["answers"] = []
+        session["chat_history"].append({"role": "user", "content": user_input})
+
+        # Ask first followup
+        first_q = session["questions"][0] if session["questions"] else "Could you tell me more about your income?"
+        session["chat_history"].append({"role": "bot", "content": f"I understand. To give you the best advice, let me ask a few questions:\n\n**{first_q}**"})
+        
+        return {
+            "response": first_q,
+            "history": session["chat_history"],
+            "done": False,
+            "is_followup": True
+        }
+
+    # STEP 2: Collect answers one by one
+    else:
+        session["answers"].append(user_input)
+        session["chat_history"].append({"role": "user", "content": user_input})
+        session["current_q_index"] += 1
+
+        # Ask next question
+        if session["current_q_index"] < len(session["questions"]):
+            next_q = session["questions"][session["current_q_index"]]
+            session["chat_history"].append({"role": "bot", "content": next_q})
+            return {
+                "response": next_q,
+                "history": session["chat_history"],
+                "done": False,
+                "is_followup": True
+            }
+
+        # STEP 3: Final Answer
+        else:
+            orig_question = session["pending_question"]
+            web_data = tavily_search(orig_question)
+            
+            final_answer = generate_final_answer(
+                orig_question,
+                session["answers"],
+                web_data
+            )
+
+            session["chat_history"].append({"role": "bot", "content": final_answer})
+            
+            # Reset flow but keep history (as per user request "RESET FLOW (but keep history)")
+            session["questions"] = []
+            session["answers"] = []
+            session["current_q_index"] = 0
+            session["pending_question"] = None
+
+            return {
+                "response": final_answer,
+                "history": session["chat_history"],
+                "done": True,
+                "is_followup": False
+            }
+
+@app.post("/chatbot/clear")
+async def chatbot_clear(req: ChatbotQuery):
+    sid = req.session_id
+    if sid in chatbot_sessions:
+        chatbot_sessions[sid] = {
+            "questions": [],
+            "answers": [],
+            "current_q_index": 0,
+            "pending_question": None,
+            "chat_history": []
+        }
+    return {"status": "cleared"}
+
+@app.get("/chatbot/history/{session_id}")
+async def chatbot_history(session_id: str):
+    if session_id in chatbot_sessions:
+        return {"history": chatbot_sessions[session_id]["chat_history"]}
+    return {"history": []}
