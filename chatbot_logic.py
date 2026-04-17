@@ -40,16 +40,28 @@ def clean_response(text: str) -> str:
     return text.strip()
 
 
-# ================= LLM CALL =================
+# ================= LLM CALL (WITH RETRY) =================
 def call_llm(prompt):
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": "You are ArthSaathi, a financial AI advisor. Always respond in clean plain text. Do NOT use markdown bold (**) or italic (*) markers. Use plain numbered lists and dashes. Use ASCII tables where tabular data is needed."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return clean_response(response.choices[0].message.content)
+    import time
+    max_retries = 3
+    base_delay = 2
+    
+    for i in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": "You are ArthSaathi, a premium financial AI advisor. Always provide a 'Financial Health Score' (0-100) and a 'Confidence Level' (%) based on the data available. Respond in clean plain text. Do NOT use markdown bold (**) or italic (*) markers. Use plain numbered lists and dashes."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return clean_response(response.choices[0].message.content)
+        except Exception as e:
+            if "quota" in str(e).lower() or "429" in str(e):
+                if i < max_retries - 1:
+                    time.sleep(base_delay * (i + 1))
+                    continue
+            return f"Service currently busy. Please try again in a moment. (Error: {str(e)})"
 
 
 # ================= FOLLOWUPS (PROMPT-DRIVEN) =================
@@ -145,60 +157,95 @@ Return clear structured output.
 # ================= VOICE SUMMARY =================
 def summarize_for_voice(text):
     prompt = f"""
-Summarize this in simple spoken English under 500 characters:
+Summarize this in VERY brief conversational English (maximum 2-3 sentences, strictly under 250 characters):
 
 {text}
 """
-    return call_llm(prompt)[:500]
+    short = call_llm(prompt)
+    return short[:250]
 
 
 # ================= SARVAM STT =================
 def speech_to_text(audio_file_path):
-    url = "https://api.sarvam.ai/v1/speech-to-text"
-
+    """
+    Transcribe an audio file using Sarvam AI's Speech-to-Text API.
+    """
+    url = "https://api.sarvam.ai/speech-to-text"
     headers = {
-        "Authorization": f"Bearer {SARVAM_API_KEY}"
+        "api-subscription-key": SARVAM_API_KEY,
+        "Accept": "application/json"
     }
-
-    files = {
-        "file": open(audio_file_path, "rb")
-    }
-
-    data = {
-        "model": "saaras:v2",
-        "language": "auto"
-    }
-
+    
     try:
-        response = requests.post(url, headers=headers, files=files, data=data)
-        return response.json().get("text", "")
-    except:
+        with open(audio_file_path, "rb") as f:
+            files = {
+                "file": (audio_file_path, f, "audio/wav")
+            }
+            data = {
+                "language_code": "en-IN", # Supports multilingual, en-IN is a safe start
+                "model": "saaras:v3",
+                "with_timestamps": "false"
+            }
+            
+            print(f"DEBUG: Sending STT request for {audio_file_path}")
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
+            
+            if response.status_code == 200:
+                transcript = response.json().get("transcript", "")
+                print(f"DEBUG: STT Transcription: {transcript}")
+                return transcript
+            else:
+                print(f"Sarvam STT Error: {response.status_code} - {response.text}")
+                return ""
+    except Exception as e:
+        print(f"STT Exception: {e}")
         return ""
 
 
 # ================= SARVAM TTS =================
 def text_to_speech(text):
-    url = "https://api.sarvam.ai/v1/text-to-speech"
+    url = "https://api.sarvam.ai/text-to-speech"
+    import uuid
+    import base64
 
     headers = {
-        "Authorization": f"Bearer {SARVAM_API_KEY}",
+        "api-subscription-key": SARVAM_API_KEY,
         "Content-Type": "application/json"
     }
 
     short_text = summarize_for_voice(text)
+    print(f"DEBUG: Summarized text for TTS: {short_text}")
+
+    if not short_text:
+        return None
 
     payload = {
-        "text": short_text,
-        "voice": "shubh",
-        "format": "wav"
+        "inputs": [short_text],
+        "target_language_code": "en-IN",
+        "speaker": "shubh",
+        "pace": 1.0,
+        "temperature": 0.6,
+        "speech_sample_rate": 22050,
+        "model": "bulbul:v3"
     }
 
-    res = requests.post(url, headers=headers, json=payload)
-
-    if res.status_code == 200:
-        with open("output.wav", "wb") as f:
-            f.write(res.content)
-        return "output.wav"
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            if "audios" in data and len(data["audios"]) > 0:
+                audio_b64 = data["audios"][0]
+                filename = f"tts_out_{uuid.uuid4().hex[:8]}.wav"
+                with open(filename, "wb") as f:
+                    f.write(base64.b64decode(audio_b64))
+                print(f"DEBUG: Bulbul v3 TTS Successful: {filename}")
+                return filename
+            else:
+                print(f"Sarvam JSON Error: {data}")
+        else:
+            print(f"Sarvam API Error: {res.status_code} - {res.text}")
+    except Exception as e:
+        print(f"Sarvam TTS Exception: {e}")
     return None
 
 

@@ -48,27 +48,33 @@ def fetch_latest_db_stats():
         return None
 
 def call_llm(prompt):
-    try:
-        res = groq_client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are ArthSaathi, a smart financial shopping advisor. "
-                        "Always analyze affordability, risks, EMI options, and give ranked recommendations. "
-                        "Respond in clean plain text only. Do NOT use ** or *** markdown markers. "
-                        "Use numbered lists and dashes for structure. "
-                        "Where comparing products or options, use a plain ASCII table with columns separated by | characters."
-                    )
-                },
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2
-        )
-        return clean_response(res.choices[0].message.content)
-    except Exception as e:
-        return f"LLM Error: {str(e)}"
+    import time
+    max_retries = 2
+    for i in range(max_retries):
+        try:
+            res = groq_client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are ArthSaathi, a premium financial shopping advisor. "
+                            "Always provide an 'Affordability Score' (0-100) and 'Logical Confidence Level' (%). "
+                            "Analyze affordability, risks, EMI options, and give ranked recommendations. "
+                            "Respond in clean plain text only. Do NOT use ** or *** markdown markers. "
+                            "Use numbered lists and dashes for structure."
+                        )
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2
+            )
+            return clean_response(res.choices[0].message.content)
+        except Exception as e:
+            if ("429" in str(e) or "quota" in str(e).lower()) and i < max_retries - 1:
+                time.sleep(2)
+                continue
+            return f"Service currently unavailable due to high demand. (Error: {str(e)})"
 
 def tavily_search(query):
     if not tavily_client:

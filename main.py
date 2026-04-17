@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 import shutil
 import base64
 import requests
+import time
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 
@@ -63,13 +64,20 @@ COLLECTION_NAME = os.getenv("MONGODB_COLLECTION_NAME", "financial_data")
 db_client = None
 db = None
 collection = None
+auth_db = None
+users_collection = None
 
 if MONGODB_URI and "<db_password>" not in MONGODB_URI:
     try:
         db_client = AsyncIOMotorClient(MONGODB_URI)
         db = db_client[DB_NAME]
         collection = db[COLLECTION_NAME]
-        logger.info(f"✅ Connected to MongoDB: {DB_NAME}.{COLLECTION_NAME}")
+        
+        # Auth Database
+        auth_db = db_client["ArthSaathi_Auth"]
+        users_collection = auth_db["users"]
+        
+        logger.info(f"✅ Connected to MongoDB: {DB_NAME} and ArthSaathi_Auth")
     except Exception as e:
         logger.error(f"❌ MongoDB Connection failed: {e}")
 else:
@@ -82,6 +90,15 @@ class ChatRequest(BaseModel):
     query: str = Field(..., description="User financial query")
     session_id: str = Field(default="default_session")
 
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 
 # ─────────────────────────────────────────────
 # BUILD TEAM
@@ -92,9 +109,9 @@ def build_team() -> Team:
     if not GEMINI_API_KEY:
         raise ValueError("❌ GEMINI_API_KEY is missing")
 
-    # ✅ Stable model
+    # ✅ Stable model - Using Gemini 1.5 Flash for better performance and higher free-tier limits
     gemini = Gemini(
-        id="gemini-3-flash-preview",
+        id="gemini-2.5-flash",
         api_key=GEMINI_API_KEY
     )
 
@@ -120,6 +137,7 @@ def build_team() -> Team:
         instructions=[
             "You are a compassionate budgeting coach.",
             "Find one spending leak and fix it.",
+            "Always include a 'Budgeting Score' (0-100) and a 'Confidence Level' (% for your analysis).",
             "Always start with [AGENT: Budgeting Analyst].",
         ],
     )
@@ -132,6 +150,7 @@ def build_team() -> Team:
         instructions=[
             "Help build savings habits.",
             "Encourage emergency fund.",
+            "Provide a 'Savings Feasibility Score' (0-100) and your 'Data Confidence' percentage.",
             "Always start with [AGENT: Savings Strategist].",
         ],
     )
@@ -144,6 +163,7 @@ def build_team() -> Team:
         instructions=[
             "Explain investing simply.",
             "Do NOT give stock tips.",
+            "Include an 'Investment Readiness Score' (0-100) and 'Market Analysis Confidence'.",
             "Always start with [AGENT: Investment Educator].",
         ],
     )
@@ -161,7 +181,7 @@ def build_team() -> Team:
         instructions=[
             "You are a Financial Advisor leading expert agents.",
             "Ask follow-up questions if user input is vague.",
-            "Structure output clearly.",
+            "Structure output clearly with a consolidated 'Overall Financial Health Score' and 'Comprehensive Confidence Score'.",
             "Final answer must start with [AGENT: Financial Advisor].",
         ],
     )
@@ -251,6 +271,48 @@ async def login_page(request: Request):
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request, "active_view": "dashboard"})
+
+# ─────────────────────────────────────────────
+# AUTH ENDPOINTS
+# ─────────────────────────────────────────────
+
+@app.post("/api/signup")
+async def api_signup(req: SignupRequest):
+    if users_collection is None:
+        raise HTTPException(503, "Database not available")
+    
+    # Check if user exists
+    existing = await users_collection.find_one({"email": req.email})
+    if existing:
+        raise HTTPException(400, "User already exists")
+    
+    user_data = {
+        "name": req.name,
+        "email": req.email,
+        "password": req.password, # In production, use hashing (bcrypt)
+        "created_at": datetime.utcnow()
+    }
+    
+    await users_collection.update_one(
+        {"email": req.email},
+        {"$set": user_data},
+        upsert=True
+    )
+    logger.info("✅ successfully upserted data in the mongodb")
+    
+    return {"status": "success", "message": "User registered"}
+
+@app.post("/api/login")
+async def api_login(req: LoginRequest):
+    if users_collection is None:
+        raise HTTPException(503, "Database not available")
+    
+    user = await users_collection.find_one({"email": req.email, "password": req.password})
+    if not user:
+        raise HTTPException(401, "Invalid credentials")
+    
+    logger.info(f"👤 User logged in: {req.email}")
+    return {"status": "success", "user": {"name": user["name"], "email": user["email"]}}
 
 @app.get("/offline", response_class=HTMLResponse)
 async def offline_mode(request: Request):
@@ -524,8 +586,16 @@ async def chatbot_query(req: ChatbotQuery):
         first_q = session["questions"][0] if session["questions"] else "Could you tell me more about your income?"
         session["chat_history"].append({"role": "bot", "content": f"I understand. To give you the best advice, let me ask a few questions:\n\n**{first_q}**"})
         
+        # Audio for followup
+        audio_path = text_to_speech(first_q)
+        audio_b64 = None
+        if audio_path and os.path.exists(audio_path):
+            with open(audio_path, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode()
+
         return {
             "response": first_q,
+            "audio_base64": audio_b64,
             "history": session["chat_history"],
             "done": False,
             "is_followup": True
@@ -541,8 +611,17 @@ async def chatbot_query(req: ChatbotQuery):
         if session["current_q_index"] < len(session["questions"]):
             next_q = session["questions"][session["current_q_index"]]
             session["chat_history"].append({"role": "bot", "content": next_q})
+            
+            # Audio for followup
+            audio_path = text_to_speech(next_q)
+            audio_b64 = None
+            if audio_path and os.path.exists(audio_path):
+                with open(audio_path, "rb") as f:
+                    audio_b64 = base64.b64encode(f.read()).decode()
+
             return {
                 "response": next_q,
+                "audio_base64": audio_b64,
                 "history": session["chat_history"],
                 "done": False,
                 "is_followup": True
@@ -604,18 +683,45 @@ async def chatbot_history(session_id: str):
 
 @app.post("/chatbot/speech-to-text")
 async def chatbot_stt(file: UploadFile = File(...)):
+    request_id = f"stt_{int(time.time())}"
+    logger.info(f"🎤 [{request_id}] Received STT request: {file.filename}")
     temp_path = f"temp_{file.filename}"
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         text = speech_to_text(temp_path)
-        return {"text": text}
+        logger.info(f"📝 [{request_id}] Transcribed text: {text}")
+        return {"text": text, "request_id": request_id}
     except Exception as e:
-        logger.error(f"STT Error: {e}")
+        logger.error(f"❌ [{request_id}] STT Error: {e}")
         return {"text": ""}
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+class TTSRequest(BaseModel):
+    text: str
+
+@app.post("/api/tts")
+async def api_tts(req: TTSRequest):
+    """
+    Summarizes text (if long) and converts to speech using Sarvam.
+    Returns base64 encoded audio.
+    """
+    request_id = f"tts_{int(time.time())}"
+    logger.info(f"🔊 [{request_id}] Received TTS request for text (len: {len(req.text)})")
+    try:
+        audio_path = text_to_speech(req.text)
+        if audio_path and os.path.exists(audio_path):
+            with open(audio_path, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode()
+            logger.info(f"✅ [{request_id}] TTS generated successfully")
+            return {"audio_base64": audio_b64, "request_id": request_id}
+        logger.warning(f"⚠️ [{request_id}] TTS generation returned no path")
+        raise HTTPException(500, "TTS generation failed")
+    except Exception as e:
+        logger.error(f"❌ [{request_id}] API TTS Error: {e}")
+        raise HTTPException(500, str(e))
 
 
 # ─────────────────────────────────────────────

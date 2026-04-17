@@ -7,6 +7,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupDashboard();
     setupStockAnalyzer();
     setupShoppingAssistant();
+
+    // Handle deep linking via query param
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewParam = urlParams.get('view');
+    if (viewParam) {
+        const link = document.querySelector(`.nav-link[data-view="${viewParam}"]`);
+        if (link) link.click();
+    }
 });
 
 
@@ -17,36 +25,35 @@ function setupNavigation() {
 
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
             const targetView = link.getAttribute('data-view');
-            
-            // If the view exists
             const targetEl = document.getElementById(`${targetView}-view`);
-            if (!targetEl) return;
+            
+            // If we are on the dashboard and the view exists here, use SPA logic
+            if (window.location.pathname === '/dashboard' && targetEl) {
+                e.preventDefault();
+                
+                // Update URL without reload
+                const url = targetView === 'dashboard' ? '/dashboard' : `/dashboard?view=${targetView}`;
+                window.history.pushState({view: targetView}, '', url);
 
-            // Update URL without reload (optional but good for SPA)
-            const url = targetView === 'dashboard' ? '/dashboard' : `/dashboard?view=${targetView}`;
-            window.history.pushState({view: targetView}, '', url);
+                // Update Nav UI
+                document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
+                link.parentElement.classList.add('active');
 
-            // Update Nav UI
-            document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
-            link.parentElement.classList.add('active');
+                // Switch View
+                views.forEach(view => view.classList.remove('active'));
+                targetEl.classList.add('active');
 
-            // Switch View
-            views.forEach(view => view.classList.remove('active'));
-            targetEl.classList.add('active');
-
-            // Handle Chatbot FAB Visibility
-            const fab = document.getElementById('chatbot-fab');
-            if (fab) {
-                if (targetView === 'analytics') {
-                    fab.style.display = 'flex';
-                } else {
-                    fab.style.display = 'none';
-                    // Also close modal if it's open and we navigate away
-                    document.getElementById('chatbot-modal').style.display = 'none';
+                // Handle Chatbot FAB Visibility
+                const fab = document.getElementById('chatbot-fab');
+                if (fab) {
+                    fab.style.display = (targetView === 'analytics') ? 'flex' : 'none';
+                    if (targetView !== 'analytics') {
+                        document.getElementById('chatbot-modal').style.display = 'none';
+                    }
                 }
             }
+            // Otherwise, let the browser handle the href navigation normally
         });
     });
 
@@ -76,6 +83,7 @@ function setupChat() {
     const agentPills = document.querySelectorAll('.agent-pill');
 
     let currentAgent = 'Financial Advisor';
+    let isVoiceQuery = false;
 
     const updateAgentUI = (agentName) => {
         if (!agentName) return;
@@ -135,6 +143,47 @@ function setupChat() {
         
         msgDiv.appendChild(header);
         msgDiv.appendChild(content);
+
+        // Add Listen Button for AI
+        if (sender === 'ai') {
+            const listenBtn = document.createElement('button');
+            listenBtn.className = 'audio-play-btn';
+            listenBtn.style.marginTop = '10px';
+            listenBtn.innerHTML = '<i class="ph ph-speaker-high"></i> Listen';
+            listenBtn.onclick = async () => {
+                if (listenBtn.disabled) return;
+                listenBtn.disabled = true;
+                listenBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Preparing...';
+                
+                try {
+                    const resp = await fetch('/api/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: content.innerText })
+                    });
+                    const data = await resp.json();
+                    if (data.audio_base64) {
+                        const audio = new Audio(`data:audio/wav;base64,${data.audio_base64}`);
+                        audio.play();
+                        listenBtn.innerHTML = '<i class="ph ph-speaker-high"></i> Playing...';
+                        audio.onended = () => {
+                            listenBtn.innerHTML = '<i class="ph ph-speaker-high"></i> Listen';
+                            listenBtn.disabled = false;
+                        };
+                    } else {
+                        throw new Error('TTS Failed');
+                    }
+                } catch (e) {
+                    listenBtn.innerHTML = '<i class="ph ph-warning"></i> Error';
+                    setTimeout(() => {
+                        listenBtn.innerHTML = '<i class="ph ph-speaker-high"></i> Listen';
+                        listenBtn.disabled = false;
+                    }, 2000);
+                }
+            };
+            msgDiv.appendChild(listenBtn);
+        }
+
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return content;
@@ -142,7 +191,10 @@ function setupChat() {
 
     const handleChat = async () => {
         const query = chatInput.value.trim();
-        if (!query) return;
+        if (!query) {
+            isVoiceQuery = false;
+            return;
+        }
 
         chatInput.value = '';
         appendMessage(query, 'user');
@@ -198,7 +250,7 @@ function setupChat() {
                     addSource(match[1].trim());
                 }
 
-                // Display cleaned text with simple markdown parsing
+                // Display cleaned text
                 const displayAreaText = fullText
                     .replace(/\[AGENT:\s*[^\]]+\]/g, '')
                     .replace(/\[SOURCE:\s*[^\]]+\]/g, '')
@@ -211,6 +263,17 @@ function setupChat() {
             statusText.textContent = 'Advisor is ready';
             agentPills.forEach(p => p.classList.remove('working'));
 
+            // AUTO TTS AFTER STREAM ENDS
+            if (isVoiceQuery) {
+                const listenBtn = aiMsgContent.parentElement.querySelector('.audio-play-btn');
+                if (listenBtn) {
+                    setTimeout(() => {
+                        listenBtn.click();
+                        isVoiceQuery = false;
+                    }, 500);
+                }
+            }
+
         } catch (error) {
             aiMsgContent.textContent = 'Error: Could not connect to the AI.';
             statusText.textContent = 'Connection error';
@@ -218,10 +281,77 @@ function setupChat() {
         }
     };
 
-    sendBtn.onclick = handleChat;
-    chatInput.onkeypress = (e) => {
-        if (e.key === 'Enter') handleChat();
+    sendBtn.onclick = () => {
+        isVoiceQuery = false;
+        handleChat();
     };
+    chatInput.onkeypress = (e) => {
+        if (e.key === 'Enter') {
+            isVoiceQuery = false;
+            handleChat();
+        }
+    };
+
+    // Voice Input for Team Fin AI
+    const micBtn = document.getElementById('team-fin-mic-btn');
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    if (micBtn) {
+        micBtn.onclick = async () => {
+            if (isRecording) {
+                mediaRecorder.stop();
+                micBtn.classList.remove('recording');
+                micBtn.style.color = '';
+                isRecording = false;
+            } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const formData = new FormData();
+                        formData.append('file', audioBlob, 'team_fin_voice.webm');
+                        
+                        chatInput.placeholder = "Transcribing voice...";
+                        try {
+                            const resp = await fetch('/chatbot/speech-to-text', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const data = await resp.json();
+                            if (data.text && data.text.trim().length > 0) {
+                                // Add audio bubble to user chat
+                                const userMsg = appendMessage('', 'user');
+                                const audioUrl = URL.createObjectURL(audioBlob);
+                                userMsg.innerHTML = `<audio controls src="${audioUrl}" style="height:30px;"></audio><br><em>"${data.text}"</em>`;
+                                
+                                chatInput.value = data.text;
+                                isVoiceQuery = true;
+                                handleChat();
+                            } else {
+                                console.warn("STT returned empty text");
+                                chatInput.placeholder = "Couldn't hear you clearly. Please try again.";
+                                setTimeout(() => chatInput.placeholder = "Ask about budgeting, investments, or savings...", 3000);
+                            }
+                        } catch (e) { 
+                            console.error('STT Error', e);
+                            chatInput.placeholder = "Error connecting to voice server.";
+                        }
+                        chatInput.placeholder = "Ask about budgeting, investments, or savings...";
+                        stream.getTracks().forEach(t => t.stop());
+                    };
+                    mediaRecorder.start();
+                    micBtn.classList.add('recording');
+                    micBtn.style.color = '#ef4444';
+                    isRecording = true;
+                } catch (e) { alert("Mic access denied"); }
+            }
+        };
+    }
 }
 
 async function initCharts() {
@@ -678,6 +808,7 @@ function setupDashboard() {
     let userGoal = localStorage.getItem('gamification_goal');
     let userScore = parseInt(localStorage.getItem('gamification_score')) || 0;
 
+    let currentLottieAnim = null;
     const updateGamificationUI = (expenses = 0) => {
         if (!badgeDisplay) return; // if not on page just return
 
@@ -687,11 +818,11 @@ function setupDashboard() {
 
         // Rank System
         const ranks = [
-            { name: 'Bronze Level', icon: '🥉', minScore: 0, maxScore: 99, color: '#F59E0B' },
-            { name: 'Silver Level', icon: '🥈', minScore: 100, maxScore: 299, color: '#9CA3AF' },
-            { name: 'Gold Level', icon: '🥇', minScore: 300, maxScore: 599, color: '#FCD34D' },
-            { name: 'Platinum Level', icon: '💎', minScore: 600, maxScore: 999, color: '#818CF8' },
-            { name: 'Diamond Level', icon: '👑', minScore: 1000, maxScore: 99999, color: '#C084FC' }
+            { key: 'gami.rank.bronze', lottie: 'bronze.json', minScore: 0, maxScore: 99, color: '#F59E0B' },
+            { key: 'gami.rank.silver', lottie: 'level1.json', minScore: 100, maxScore: 299, color: '#9CA3AF' },
+            { key: 'gami.rank.gold', lottie: 'level3.json', minScore: 300, maxScore: 599, color: '#FCD34D' },
+            { key: 'gami.rank.platinum', lottie: 'level1.json', minScore: 600, maxScore: 999, color: '#818CF8' },
+            { key: 'gami.rank.diamond', lottie: 'level3.json', minScore: 1000, maxScore: 99999, color: '#C084FC' }
         ];
 
         let currentRank = ranks[0];
@@ -703,8 +834,24 @@ function setupDashboard() {
             }
         }
 
-        badgeDisplay.textContent = currentRank.icon;
-        rankDisplay.textContent = currentRank.name;
+        // Load/Update Lottie Animation for Badge
+        const lottiePath = `/static/lottie/${currentRank.lottie}`;
+        if (badgeDisplay.getAttribute('data-current-lottie') !== lottiePath) {
+            if (currentLottieAnim) {
+                currentLottieAnim.destroy();
+            }
+            badgeDisplay.innerHTML = '';
+            currentLottieAnim = lottie.loadAnimation({
+                container: badgeDisplay,
+                renderer: 'svg',
+                loop: true,
+                autoplay: true,
+                path: lottiePath
+            });
+            badgeDisplay.setAttribute('data-current-lottie', lottiePath);
+        }
+
+        rankDisplay.textContent = I18N.t(currentRank.key);
         rankDisplay.style.color = currentRank.color;
         scoreDisplay.textContent = `Score: ${userScore}`;
 

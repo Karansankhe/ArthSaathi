@@ -30,26 +30,21 @@
 
             <nav class="sidebar-nav">
                 <ul>
-                    <li class="{{ 'active' if active_view == 'dashboard' else '' }}"><a href="#" class="nav-link"
+                    <li class="{{ 'active' if active_view == 'dashboard' else '' }}"><a href="/dashboard" class="nav-link"
                             data-view="dashboard"><i class="ph ph-squares-four"></i>
                             <span data-i18n="nav.dashboard">Dashboard</span></a></li>
-                    <li class="{{ 'active' if active_view == 'analytics' else '' }}"><a href="#" class="nav-link"
+                    <li class="{{ 'active' if active_view == 'analytics' else '' }}"><a href="/dashboard?view=analytics" class="nav-link"
                             data-view="analytics"><i class="ph ph-chart-line-up"></i> <span
                                 data-i18n="nav.analytics">Analytics</span></a></li>
-                    <li class="{{ 'active' if active_view == 'team-fin' else '' }}"><a href="#" class="nav-link"
-                            data-view="team-fin"><i class="ph ph-robot"></i> <span data-i18n="nav.teamfin">Team Fin
+                    <li><a href="/dashboard?view=team-fin" class="nav-link" data-view="team-fin"><i class="ph ph-robot"></i> <span data-i18n="nav.teamfin">Team Fin
                                 AI</span></a></li>
-                    <li class="{{ 'active' if active_view == 'avatar' else '' }}"><a href="#" class="nav-link"
-                            data-view="avatar"><i class="ph ph-video-camera"></i> <span data-i18n="nav.avatar">AI
+                    <li><a href="/dashboard?view=avatar" class="nav-link" data-view="avatar"><i class="ph ph-video-camera"></i> <span data-i18n="nav.avatar">AI
                                 Avatar</span></a></li>
                     <li><a href="/shopping-assistant" class="shopping-link"><i class="ph ph-shopping-cart"></i>
                             <span data-i18n="nav.shopping">Shopping Assistant</span></a></li>
                     <li><a href="/gst-advisor" class="gst-advisor-link"><i class="ph ph-scales"></i>
                             <span data-i18n="nav.gst">GST Advisor</span></a></li>
-                    <li class="{{ 'active' if active_view == 'stock-analyzer' else '' }}"><a href="#" class="nav-link"
-                            data-view="stock-analyzer"><i class="ph ph-trend-up"></i> <span data-i18n="nav.stock">Stock
-                                Analyzer</span></a>
-                    </li>
+                    <li class="{{ 'active' if active_view == 'stock-analyzer' else '' }}"><a href="/dashboard?view=stock-analyzer" class="nav-link" data-view="stock-analyzer"><i class="ph ph-trend-up"></i> <span data-i18n="nav.stock">Stock Analyzer</span></a></li>
                     <li><a href="/offline" class="offline-mode-link"><i class="ph ph-wifi-slash"></i> <span
                                 data-i18n="nav.offline">Offline Mode</span></a></li>
 
@@ -422,7 +417,7 @@
                         <div class="chat-input-wrapper">
                             <div class="input-actions">
                                 <button class="tool-btn"><i class="ph ph-paperclip"></i></button>
-                                <button class="tool-btn"><i class="ph ph-microphone"></i></button>
+                                <button class="tool-btn" id="team-fin-mic-btn"><i class="ph ph-microphone"></i></button>
                             </div>
                             <input type="text" id="chat-input" data-i18n-placeholder="teamfin.placeholder"
                                 placeholder="Ask about budgeting, investments, or savings...">
@@ -743,6 +738,4 @@
     <script type="text/javascript"
         src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 </body>
-
-
 </html>

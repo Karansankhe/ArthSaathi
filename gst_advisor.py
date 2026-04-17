@@ -183,23 +183,30 @@ def _web_search(query: str) -> str:
 def _route(question: str) -> str:
     if not _groq_client:
         return "both"
-    prompt = [
-        {"role": "system", "content": (
-            "Route the GST query. Reply ONLY with valid JSON: "
-            '{"route":"kb"} or {"route":"web"} or {"route":"both"}. '
-            'Use "kb" for rule/section/schedule/form lookups. '
-            'Use "web" for recent amendments, notifications, court orders. '
-            'Use "both" for comprehensive analysis.'
-        )},
-        {"role": "user", "content": question},
-    ]
-    try:
-        text = _groq_client.chat.completions.create(
-            model=MODEL, messages=prompt, max_tokens=30
-        ).choices[0].message.content.strip()
-        return json.loads(text)["route"]
-    except Exception:
-        return "both"
+    
+    import time
+    for i in range(2):
+        try:
+            prompt = [
+                {"role": "system", "content": (
+                    "Route the GST query. Reply ONLY with valid JSON: "
+                    '{"route":"kb"} or {"route":"web"} or {"route":"both"}. '
+                    'Use "kb" for rule/section/schedule/form lookups. '
+                    'Use "web" for recent amendments, notifications, court orders. '
+                    'Use "both" for comprehensive analysis.'
+                )},
+                {"role": "user", "content": question},
+            ]
+            text = _groq_client.chat.completions.create(
+                model=MODEL, messages=prompt, max_tokens=30
+            ).choices[0].message.content.strip()
+            return json.loads(text)["route"]
+        except Exception as e:
+            if ("429" in str(e) or "quota" in str(e).lower()) and i == 0:
+                time.sleep(2)
+                continue
+            return "both"
+    return "both"
 
 
 # ─── LLM Report Generator ─────────────────────────────────────────────────────
@@ -241,48 +248,54 @@ Generate a DETAILED GST ADVISORY REPORT as a JSON object with these EXACT keys:
 
 Return ONLY the JSON object. No markdown fences, no extra text.
 """
-    try:
-        raw = _groq_client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user}],
-            max_tokens=2500,
-            temperature=0.25,
-        ).choices[0].message.content.strip()
+    import time
+    for i in range(3):
+        try:
+            raw = _groq_client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "system", "content": system},
+                          {"role": "user", "content": user}],
+                max_tokens=2500,
+                temperature=0.25,
+            ).choices[0].message.content.strip()
 
-        # Strip markdown code fences if present
-        if "```" in raw:
-            parts = raw.split("```")
-            raw = parts[1] if len(parts) > 1 else parts[0]
-            if raw.startswith("json"):
-                raw = raw[4:].strip()
+            # Strip markdown code fences if present
+            if "```" in raw:
+                parts = raw.split("```")
+                raw = parts[1] if len(parts) > 1 else parts[0]
+                if raw.startswith("json"):
+                    raw = raw[4:].strip()
 
-        report = json.loads(raw)
-        # Clean all string fields in the report
-        for key, val in report.items():
-            if isinstance(val, str):
-                report[key] = clean_response(val)
-            elif isinstance(val, list):
-                report[key] = [clean_response(item) if isinstance(item, str) else item for item in val]
-        return report
-    except Exception as e:
-        logger.error(f"Report generation error: {e}")
-        return {
-            "summary": (
-                "Could not generate a fully structured report. "
-                "Please try rephrasing your question."
-            ),
-            "legal_provisions": str(e),
-            "applicable_rules": [],
-            "compliance_requirements": [],
-            "forms_required": [],
-            "deadlines": [],
-            "penalties": "",
-            "recent_updates": "",
-            "practical_guidance": "",
-            "risk_notes": "",
-            "confidence": 0,
-        }
+            report = json.loads(raw)
+            # Clean all string fields in the report
+            for key, val in report.items():
+                if isinstance(val, str):
+                    report[key] = clean_response(val)
+                elif isinstance(val, list):
+                    report[key] = [clean_response(item) if isinstance(item, str) else item for item in val]
+            return report
+        except Exception as e:
+            if ("429" in str(e) or "quota" in str(e).lower()) and i < 2:
+                time.sleep(3 * (i + 1))
+                continue
+            logger.error(f"Report generation error: {e}")
+            return {
+                "summary": (
+                    "Could not generate a fully structured report. "
+                    "Please try rephrasing your question."
+                ),
+                "legal_provisions": str(e),
+                "applicable_rules": [],
+                "compliance_requirements": [],
+                "forms_required": [],
+                "deadlines": [],
+                "penalties": "",
+                "recent_updates": "",
+                "practical_guidance": "",
+                "risk_notes": "",
+                "confidence": 0,
+            }
+    return {"summary": "Exceeded retry limit", "confidence": 0}
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
