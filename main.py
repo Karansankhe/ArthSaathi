@@ -332,9 +332,10 @@ async def chatbot_query(req: ChatbotQuery):
             orig_question = session["pending_question"]
             web_data = tavily_search(orig_question)
             
+            qa_pairs = list(zip(session["questions"], session["answers"]))
             final_answer = generate_final_answer(
                 orig_question,
-                session["answers"],
+                qa_pairs,
                 web_data
             )
 

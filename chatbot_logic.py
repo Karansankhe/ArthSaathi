@@ -181,9 +181,9 @@ def text_to_speech(text):
 
 
 # ================= PIPELINE =================
-def run_agent(question, answers):
+def run_agent(question, qa_pairs):
     web_data = tavily_search(question)
-    final = generate_final_answer(question, answers, web_data)
+    final = generate_final_answer(question, qa_pairs, web_data)
 
     print("\n💡 FINAL ANSWER:\n", final)
 
@@ -206,7 +206,8 @@ if __name__ == "__main__":
         print("Q:", f)
         answers.append(input("A: "))
 
-    final_text, audio = run_agent(q, answers)
+    qa_pairs = list(zip(followups, answers))
+    final_text, audio = run_agent(q, qa_pairs)
 
     print("\nFINAL:\n", final_text)
 
