@@ -236,11 +236,9 @@ app.add_middleware(
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     logger.info("🌐 Serving UI")
-    try:
-        return templates.TemplateResponse("index.html", {"request": request})
-    except Exception as e:
-        logger.exception("❌ Error rendering index.html")
-        return HTMLResponse(content=f"<h1>Internal Server Error</h1><pre>{str(e)}</pre>", status_code=500)
+    return templates.TemplateResponse(
+        request=request, name="index.html", context={}
+    )
 
 
 @app.post("/chat")
