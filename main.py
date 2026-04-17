@@ -40,17 +40,11 @@ logger = logging.getLogger("finance-ai")
 # ─────────────────────────────────────────────
 dotenv.load_dotenv()
 
+# API keys will be checked during build_team to avoid startup crashes if env is missing
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-logger.info("🔑 Loading environment variables...")
-
-if not GEMINI_API_KEY:
-    logger.error("❌ GEMINI_API_KEY missing")
-    raise ValueError("GEMINI_API_KEY not set")
-
-if not TAVILY_API_KEY:
-    logger.warning("⚠️ TAVILY_API_KEY missing (search disabled)")
+logger.info("🔑 Checking environment variables...")
 
 # ─────────────────────────────────────────────
 # REQUEST MODEL
@@ -65,9 +59,13 @@ class ChatRequest(BaseModel):
 def build_team() -> Team:
     logger.info("🧠 Initializing Gemini model...")
 
+    if not GEMINI_API_KEY:
+        logger.error("❌ GEMINI_API_KEY missing")
+        # Don't crash here, but the team will fail to run
+    
     gemini = Gemini(
         id="gemini-3-flash-preview",
-        api_key=GEMINI_API_KEY
+        api_key=GEMINI_API_KEY or "MISSING_KEY"
     )
 
     tools = []
@@ -173,10 +171,6 @@ async def stream_response(team: Team, query: str, request_id: str) -> AsyncGener
         yield f"Error: {str(e)}"
         return
 
-        logger.debug(f"📤 [{request_id}] Chunk: {chunk}")
-        yield chunk
-        await asyncio.sleep(0.02)
-
     logger.info(f"🏁 [{request_id}] Streaming complete")
 
 
@@ -189,9 +183,10 @@ async def lifespan(app: FastAPI):
 
     try:
         app.state.team = build_team()
-    except Exception:
-        logger.exception("❌ Failed to initialize AI team")
-        raise
+        logger.info("✅ AI Team successfully initialized")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize AI team: {e}")
+        app.state.team = None
 
     logger.info("✅ App startup complete")
     yield
@@ -215,6 +210,9 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 # Verify directories exist to prevent 500 errors
+logger.info(f"📂 Templates Dir: {TEMPLATES_DIR}")
+logger.info(f"📂 Static Dir: {STATIC_DIR}")
+
 if not os.path.exists(TEMPLATES_DIR):
     logger.error(f"❌ Templates directory NOT FOUND: {TEMPLATES_DIR}")
 if not os.path.exists(STATIC_DIR):
@@ -238,7 +236,11 @@ app.add_middleware(
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     logger.info("🌐 Serving UI")
-    return templates.TemplateResponse("index.html", {"request": request})
+    try:
+        return templates.TemplateResponse("index.html", {"request": request})
+    except Exception as e:
+        logger.exception("❌ Error rendering index.html")
+        return HTMLResponse(content=f"<h1>Internal Server Error</h1><pre>{str(e)}</pre>", status_code=500)
 
 
 @app.post("/chat")
@@ -250,6 +252,13 @@ async def chat(req: ChatRequest):
     if not req.query.strip():
         logger.warning(f"⚠️ [{request_id}] Empty query")
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    if not app.state.team:
+        logger.error(f"⚠️ [{request_id}] Chat requested but AI team is not initialized")
+        raise HTTPException(
+            status_code=503, 
+            detail="AI Service is currently unavailable. Please check server logs for configuration errors (e.g. missing API keys)."
+        )
 
     team = app.state.team
 
