@@ -1162,8 +1162,59 @@ body {
     background: white;
 }
 
+.input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#chatbot-mic-btn {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    font-size: 20px;
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#chatbot-mic-btn:hover {
+    color: var(--accent-purple);
+}
+
+#chatbot-mic-btn.recording {
+    color: #ef4444;
+    animation: pulseMic 1.5s infinite;
+}
+
+@keyframes pulseMic {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+#chatbot-send-btn {
+    background: var(--accent-purple);
+    color: white;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#chatbot-send-btn:hover {
+    background: #4f46e5;
+}
+
 .chatbot-footer input {
-    width: 100%;
+    flex: 1;
     border: none;
     padding: 8px 0;
     font-size: 14px;
@@ -1182,6 +1233,31 @@ body {
 
 .footer-branding i {
     color: #f59e0b;
+}
+
+/* Audio Play Button */
+.audio-play-btn {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #eef2ff;
+    color: var(--accent-purple);
+    border: 1px solid #e0e7ff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.audio-play-btn:hover {
+    background: #e0e7ff;
+}
+
+.audio-play-btn.playing i {
+    animation: bounce 1s infinite alternate;
 }
 
 /* Scrollbar Style */

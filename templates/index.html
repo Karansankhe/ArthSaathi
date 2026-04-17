@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FinSet - Financial Analytics Dashboard</title>
+    <title>ArthSaathi - Financial Analytics Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,8 +19,8 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <div class="logo-icon">F</div>
-                    <span>FinSet</span>
+                    <div class="logo-icon">A</div>
+                    <span>ArthSaathi</span>
                 </div>
                 <button class="collapse-btn">
                     <i class="ph ph-caret-left"></i>
@@ -76,6 +76,97 @@
                 </div>
             </header>
 
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="view-content {{ 'active' if active_view == 'dashboard' else '' }}">
+                <section class="content-header">
+                    <div class="title-group">
+                        <h1>Dashboard Data Hub</h1>
+                        <p>Upload your data to power the Analytics charts dynamically</p>
+                    </div>
+                </section>
+                
+                <div class="upload-options-grid" style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div class="upload-card card" style="flex: 1 1 45%; padding: 24px;">
+                        <h3 style="margin-bottom: 12px; font-size: 1.2rem;"><i class="ph ph-upload-simple"></i> Upload Files</h3>
+                        <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: 20px;">Select multiple documents containing your spending data (bank statements, receipts, texts).</p>
+                        <form id="data-upload-form" enctype="multipart/form-data">
+                            <input type="file" id="data-files" name="files" multiple accept=".txt,.csv,.pdf,.png,.jpg" style="display:none;">
+                            <label for="data-files" class="primary-btn" style="cursor: pointer; display: inline-flex; justify-content: center; width: 100%; box-sizing: border-box; text-align: center;"><i class="ph ph-files"></i> Choose Files</label>
+                            <div id="selected-files-list" style="margin-top: 10px; font-size: 0.85rem; color: #374151;"></div>
+                            <button type="submit" class="secondary-btn" style="margin-top:10px; width:100%;"><i class="ph ph-rocket"></i> Parse & Analyze Files</button>
+                        </form>
+                    </div>
+
+                    <div class="upload-card card" style="flex: 1 1 45%; padding: 24px;">
+                        <h3 style="margin-bottom: 12px; font-size: 1.2rem;"><i class="ph ph-keyboard"></i> Manual Entry</h3>
+                        <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: 20px;">Paste or type your financial transactions directly to be analyzed.</p>
+                        <textarea id="manual-data-input" placeholder="E.g., Spent $50 on Cafe this month, Rent is $1200..." rows="4" style="width: 100%; padding: 12px; border: 1px solid #E5E7EB; border-radius: 8px; font-family: inherit; margin-bottom: 10px; resize: vertical; box-sizing: border-box;"></textarea>
+                        <button id="manual-data-submit" class="primary-btn" style="width: 100%;"><i class="ph ph-magic-wand"></i> Process Text</button>
+                    </div>
+                </div>
+                
+                <div id="parse-status-container" style="display:none; margin-top:20px; align-items:center; justify-content: center; padding: 16px;" class="card">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <i class="ph ph-spinner ph-spin" style="font-size: 1.5rem; color: #818CF8;"></i> <span id="parse-status-text" style="font-weight: 500;">Parsing your data using AI...</span>
+                    </div>
+                </div>
+
+                <!-- Gamification Section -->
+                <section class="gamification-section" style="margin-top: 32px;">
+                    <div class="title-group" style="margin-bottom: 20px;">
+                        <h2><i class="ph ph-trophy"></i> Your Achievement Progress</h2>
+                        <p>Set a spending goal, parse your data, and level up!</p>
+                    </div>
+                    <div class="gamification-grid" style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        
+                        <!-- Goal Setting Card -->
+                        <div class="gami-card card" style="flex: 1 1 30%; padding: 24px; position: relative; overflow: hidden;">
+                            <div class="card-bg-glow" style="background: radial-gradient(circle, rgba(129,140,248,0.1) 0%, transparent 70%);"></div>
+                            <h3 style="margin-bottom: 16px; font-size: 1.2rem; display:flex; align-items:center; gap:8px;">
+                                <i class="ph ph-target" style="color:var(--accent-purple);"></i> Monthly Goal Settings
+                            </h3>
+                            <div style="margin-bottom: 16px;">
+                                <label style="display:block; font-size:14px; margin-bottom:8px; font-weight:500;">Max Expense Target ($)</label>
+                                <input type="number" id="gamification-goal-input" placeholder="e.g. 2000" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size:16px;">
+                            </div>
+                            <button id="set-goal-btn" class="primary-btn" style="width:100%; justify-content:center;">Set Goal</button>
+                            <p id="current-goal-display" style="margin-top:16px; font-size:14px; color:var(--text-muted); font-weight:600;">Current Goal: Not Set</p>
+                        </div>
+                        
+                        <!-- Rank & Level Card -->
+                        <div class="gami-card card" style="flex: 1 1 35%; padding: 24px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+                            <h3 style="margin-bottom: 16px; font-size: 1.2rem; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                <i class="ph ph-medal" style="color:#F59E0B;"></i> Current Rank
+                            </h3>
+                            <div class="badge-icon" id="badge-icon-display" style="font-size: 48px; margin-bottom: 12px; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.1));">🥉</div>
+                            <h2 id="rank-level-display" style="font-size: 24px; color: var(--text-main); margin-bottom: 8px;">Bronze Level</h2>
+                            <div class="progress-bar-bg" style="background:#F3F4F6; height:12px; border-radius:6px; overflow:hidden; margin-bottom:8px;">
+                                <div id="rank-progress" style="background: linear-gradient(90deg, #4F46E5, #818CF8); width: 0%; height: 100%; transition: width 0.5s ease;"></div>
+                            </div>
+                            <p id="score-display" style="font-size:14px; color:var(--text-muted); font-weight:600;">Score: 0</p>
+                        </div>
+
+                        <!-- Stats & Gamification Info -->
+                        <div class="gami-card card" style="flex: 1 1 25%; padding: 24px; display:flex; flex-direction:column;">
+                            <h3 style="margin-bottom: 16px; font-size: 1.2rem; display:flex; align-items:center; gap:8px;">
+                                <i class="ph ph-chart-polar" style="color:var(--trend-up);"></i> Achievement Status
+                            </h3>
+                            <div style="flex:1; display:flex; flex-direction:column; justify-content:space-around;">
+                                <div>
+                                    <p style="font-size:12px; color:var(--text-muted);">Status</p>
+                                    <p id="gami-status-text" style="font-size:16px; font-weight:600; color:#F59E0B;">Awaiting Data</p>
+                                </div>
+                                <div style="margin-top:12px;">
+                                    <p style="font-size:12px; color:var(--text-muted);">Expenses Tracked / Goal</p>
+                                    <p id="gami-expenses-text" style="font-size:18px; font-weight:700; color:var(--text-main);">$0 / Not Set</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+            </div>
+
             <!-- Analytics View -->
             <div id="analytics-view" class="view-content {{ 'active' if active_view == 'analytics' else '' }}">
                 <section class="content-header">
@@ -93,24 +184,29 @@
                     </div>
                 </section>
 
+                <!-- Gamification Indicator -->
+                <div id="stats-gamification-info" class="card" style="margin-bottom: 24px; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(135deg, rgba(79, 70, 229, 0.05), rgba(129, 140, 248, 0.1)); border: 1px dashed var(--accent-purple); border-radius: 16px;">
+                    <!-- Synchronized by JS -->
+                </div>
+
                 <section class="overview-cards">
                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">Total balance</span>
                             <div class="selector">USD <i class="ph ph-caret-down"></i></div>
                         </div>
-                        <div class="card-value">$15,700.00</div>
+                        <div class="card-value">-</div>
                         <div class="card-stats">
-                            <span class="trend positive"><i class="ph ph-arrow-up"></i> 12.1%</span>
+                            <span class="trend positive"><i class="ph ph-minus"></i> -</span>
                             <div class="stat-item">
                                 <i class="ph ph-arrows-left-right"></i>
-                                <span>50 transactions</span>
+                                <span>- transactions</span>
                             </div>
                         </div>
                         <div class="card-footer">
-                            <p>You have extra <strong>$1,700</strong> compared to last month</p>
+                            <p>Upload data to see insights</p>
                             <div class="categories-count">
-                                <i class="ph ph-squares-four"></i> 15 categories
+                                <i class="ph ph-squares-four"></i> - categories
                             </div>
                         </div>
                     </div>
@@ -120,18 +216,18 @@
                             <span class="card-title">Income</span>
                             <div class="selector">USD <i class="ph ph-caret-down"></i></div>
                         </div>
-                        <div class="card-value">$8,500.00</div>
+                        <div class="card-value">-</div>
                         <div class="card-stats">
-                            <span class="trend positive"><i class="ph ph-arrow-up"></i> 6.3%</span>
+                            <span class="trend positive"><i class="ph ph-minus"></i> -</span>
                             <div class="stat-item">
                                 <i class="ph ph-arrows-left-right"></i>
-                                <span>27 transactions</span>
+                                <span>- transactions</span>
                             </div>
                         </div>
                         <div class="card-footer">
-                            <p>You earn extra <strong>$500</strong> compared to last month</p>
+                            <p>Upload data to see insights</p>
                             <div class="categories-count">
-                                <i class="ph ph-squares-four"></i> 6 categories
+                                <i class="ph ph-squares-four"></i> - categories
                             </div>
                         </div>
                     </div>
@@ -141,18 +237,18 @@
                             <span class="card-title">Expense</span>
                             <div class="selector">USD <i class="ph ph-caret-down"></i></div>
                         </div>
-                        <div class="card-value">$6,222.00</div>
+                        <div class="card-value">-</div>
                         <div class="card-stats">
-                            <span class="trend negative"><i class="ph ph-arrow-up"></i> 2.4%</span>
+                            <span class="trend negative"><i class="ph ph-minus"></i> -</span>
                             <div class="stat-item">
                                 <i class="ph ph-arrows-left-right"></i>
-                                <span>23 transactions</span>
+                                <span>- transactions</span>
                             </div>
                         </div>
                         <div class="card-footer">
-                            <p>You spent extra <strong>$1,222</strong> compared to last month</p>
+                            <p>Upload data to see insights</p>
                             <div class="categories-count">
-                                <i class="ph ph-squares-four"></i> 9 categories
+                                <i class="ph ph-squares-four"></i> - categories
                             </div>
                         </div>
                     </div>
@@ -187,17 +283,12 @@
                                 <canvas id="statsChart"></canvas>
                                 <div class="donut-center">
                                     <span class="label">This month expense</span>
-                                    <span class="value">$6,222.00</span>
+                                    <span class="value">-</span>
                                 </div>
                             </div>
                         </div>
-                        <div class="donut-legend">
-                            <div class="legend-item"><span class="dot lavender"></span> Money transfer</div>
-                            <div class="legend-item"><span class="dot charcoal"></span> Cafe & Restaurants</div>
-                            <div class="legend-item"><span class="dot purple"></span> Rent</div>
-                            <div class="legend-item"><span class="dot dark-purple"></span> Education</div>
-                            <div class="legend-item"><span class="dot green"></span> Food & Groceries</div>
-                            <div class="legend-item"><span class="dot silver"></span> Others</div>
+                        <div class="donut-legend" id="donut-legend">
+                            <!-- Dynamically generated -->
                         </div>
                     </div>
 
@@ -377,7 +468,11 @@
             </div>
         </div>
         <div class="chatbot-footer">
-            <input type="text" id="chatbot-input" placeholder="Reply to LeadBot...">
+            <div class="input-row">
+                <button id="chatbot-mic-btn" title="Click to speak"><i class="ph ph-microphone"></i></button>
+                <input type="text" id="chatbot-input" placeholder="Reply to LeadBot...">
+                <button id="chatbot-send-btn" title="Send"><i class="ph ph-paper-plane-right"></i></button>
+            </div>
             <div class="footer-branding">
                  <span>We're <i class="ph ph-lightning"></i> by ArthSaathi</span>
             </div>

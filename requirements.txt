@@ -9,3 +9,4 @@ google-genai
 httpx
 gunicorn
 tavily-python
+pymupdf4llm

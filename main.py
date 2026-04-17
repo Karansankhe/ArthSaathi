@@ -9,12 +9,14 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+import shutil
+import base64
 
 from agno.agent import Agent
 from agno.team.team import Team
@@ -23,7 +25,9 @@ from agno.tools.reasoning import ReasoningTools
 from agno.tools.tavily import TavilyTools
 
 import dotenv
-from chatbot_logic import generate_followups, tavily_search, generate_final_answer
+import json
+from chatbot_logic import generate_followups, tavily_search, generate_final_answer, speech_to_text, text_to_speech, call_llm
+
 
 # Session state for Analytics Chatbot
 chatbot_sessions = {}
@@ -207,6 +211,45 @@ app.add_middleware(
 async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+# Blank starter stats
+global_stats = {
+    "balance": {
+        "current": 0.00,
+        "history": [],
+        "last_month": []
+    },
+    "income": {"current": 0.00},
+    "expense": {
+        "current": 0.00,
+        "categories": []
+    },
+    "budget_vs_expense": {
+        "months": [],
+        "expense": [],
+        "budget": []
+    }
+}
+
+@app.get("/api/stats")
+async def get_stats():
+    return global_stats
+
+from fastapi import Form
+from typing import List
+
+from parser_logic import parse_and_get_stats
+
+@app.post("/api/parse-data")
+async def parse_data(files: List[UploadFile] = File(None), text_data: str = Form(None)):
+    global global_stats
+    try:
+        parsed_json = await parse_and_get_stats(files, text_data)
+        global_stats = parsed_json
+        return {"status": "success", "stats": global_stats}
+    except Exception as e:
+        logger.error(f"Failed to parse data: {e}")
+        raise HTTPException(500, str(e))
+
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
@@ -297,6 +340,13 @@ async def chatbot_query(req: ChatbotQuery):
 
             session["chat_history"].append({"role": "bot", "content": final_answer})
             
+            # Use Text-to-Speech for the final answer
+            audio_path = text_to_speech(final_answer)
+            audio_b64 = None
+            if audio_path and os.path.exists(audio_path):
+                with open(audio_path, "rb") as f:
+                    audio_b64 = base64.b64encode(f.read()).decode()
+
             # Reset flow but keep history (as per user request "RESET FLOW (but keep history)")
             session["questions"] = []
             session["answers"] = []
@@ -305,6 +355,7 @@ async def chatbot_query(req: ChatbotQuery):
 
             return {
                 "response": final_answer,
+                "audio_base64": audio_b64,
                 "history": session["chat_history"],
                 "done": True,
                 "is_followup": False
@@ -328,3 +379,18 @@ async def chatbot_history(session_id: str):
     if session_id in chatbot_sessions:
         return {"history": chatbot_sessions[session_id]["chat_history"]}
     return {"history": []}
+
+@app.post("/chatbot/speech-to-text")
+async def chatbot_stt(file: UploadFile = File(...)):
+    temp_path = f"temp_{file.filename}"
+    try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        text = speech_to_text(temp_path)
+        return {"text": text}
+    except Exception as e:
+        logger.error(f"STT Error: {e}")
+        return {"text": ""}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)

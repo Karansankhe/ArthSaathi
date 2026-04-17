@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupNavigation();
     setupChat();
     setupAnalyticsChatbot();
+    setupDashboard();
 });
 
 
@@ -235,15 +236,17 @@ async function initCharts() {
         document.querySelector('.card:nth-child(3) .card-value').textContent = `$${stats.expense.current.toLocaleString()}`;
     } catch (err) {
         console.error('Failed to load stats:', err);
-        // Fallback or local defaults
     }
 }
+
+let balChart, stsChart, cmpChart;
 
 function renderBalanceChart(data) {
     const ctx = document.getElementById('balanceChart');
     if (!ctx) return;
+    if (balChart) balChart.destroy();
 
-    new Chart(ctx.getContext('2d'), {
+    balChart = new Chart(ctx.getContext('2d'), {
         type: 'line',
         data: {
             labels: ['1 Jul', '3 Jul', '5 Jul', '7 Jul', '9 Jul', '11 Jul', '13 Jul', '15 Jul', '17 Jul', '19 Jul'],
@@ -278,8 +281,9 @@ function renderBalanceChart(data) {
 function renderStatsChart(categories) {
     const ctx = document.getElementById('statsChart');
     if (!ctx) return;
+    if (stsChart) stsChart.destroy();
 
-    new Chart(ctx.getContext('2d'), {
+    stsChart = new Chart(ctx.getContext('2d'), {
         type: 'doughnut',
         data: {
             datasets: [{
@@ -300,8 +304,9 @@ function renderStatsChart(categories) {
 function renderComparisonChart(data) {
     const ctx = document.getElementById('comparisonChart');
     if (!ctx) return;
+    if (cmpChart) cmpChart.destroy();
 
-    new Chart(ctx.getContext('2d'), {
+    cmpChart = new Chart(ctx.getContext('2d'), {
         type: 'bar',
         data: {
             labels: data.months,
@@ -353,7 +358,7 @@ function setupAnalyticsChatbot() {
     if (fab) fab.addEventListener('click', toggleChat);
     if (closeBtn) closeBtn.addEventListener('click', () => modal.style.display = 'none');
 
-    const appendMsg = (text, role) => {
+    const appendMsg = (text, role, audioB64 = null) => {
         const wrapper = document.createElement('div');
         wrapper.className = `message-wrapper ${role}`;
         
@@ -363,15 +368,31 @@ function setupAnalyticsChatbot() {
 
         const name = role === 'bot' ? 'LeadBot' : 'You';
 
+        let audioHtml = '';
+        if (audioB64) {
+            const audioSrc = `data:audio/wav;base64,${audioB64}`;
+            const id = 'audio-' + Date.now();
+            audioHtml = `
+                <div style="margin-top: 12px; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 8px;">
+                    <audio id="${id}" src="${audioSrc}"></audio>
+                    <button class="audio-play-btn" onclick="const a = document.getElementById('${id}'); if(a.paused){a.play(); this.classList.add('playing');}else{a.pause(); this.classList.remove('playing');} a.onended = () => this.classList.remove('playing');">
+                        <i class="ph ph-speaker-high"></i> Listen to Plan
+                    </button>
+                </div>
+            `;
+        }
+
         wrapper.innerHTML = `
             ${avatarHtml}
             <div class="message-content">
                 <span class="sender-name">${name}</span>
                 <div class="bubble">
                     ${text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}
+                    ${audioHtml}
                 </div>
             </div>
         `;
+
 
         body.appendChild(wrapper);
         body.scrollTop = body.scrollHeight;
@@ -418,7 +439,15 @@ function setupAnalyticsChatbot() {
             const data = await resp.json();
             
             loadingWrapper.remove();
-            appendMsg(data.response, 'bot');
+            appendMsg(data.response, 'bot', data.audio_base64);
+            
+            // Auto play audio if provided
+            if (data.audio_base64) {
+                setTimeout(() => {
+                    const audioWrapper = document.querySelector('.message-wrapper:last-child .audio-play-btn');
+                    if (audioWrapper) audioWrapper.click();
+                }, 100);
+            }
             
         } catch (e) {
             if (loadingWrapper) loadingWrapper.remove();
@@ -432,6 +461,71 @@ function setupAnalyticsChatbot() {
         if (e.key === 'Enter') handleSend();
     });
 
+    // Voice Input Setup
+    const micBtn = document.getElementById('chatbot-mic-btn');
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    if (micBtn) {
+        micBtn.addEventListener('click', async () => {
+            if (isRecording) {
+                // Stop recording
+                mediaRecorder.stop();
+                micBtn.classList.remove('recording');
+                isRecording = false;
+            } else {
+                // Start recording
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = e => {
+                        if (e.data.size > 0) audioChunks.push(e.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // Browsers capture webm often
+                        const formData = new FormData();
+                        formData.append('file', audioBlob, 'voice.webm');
+                        
+                        input.placeholder = "Listening...";
+                        
+                        try {
+                            const resp = await fetch('/chatbot/speech-to-text', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const data = await resp.json();
+                            if (data.text) {
+                                input.value = data.text;
+                                handleSend(); // Auto send
+                            } else {
+                                alert("Couldn't understand audio");
+                            }
+                        } catch (e) {
+                            console.error('STT Error', e);
+                            alert("Speech to text failed.");
+                        } finally {
+                            input.placeholder = "Reply to LeadBot...";
+                        }
+                        
+                        // Stop all tracks to turn off mic light
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    micBtn.classList.add('recording');
+                    isRecording = true;
+                } catch (err) {
+                    console.error('Mic access denied or error', err);
+                    alert("Microphone access is required for voice input");
+                }
+            }
+        });
+    }
+
     if (clearBtn) {
         clearBtn.addEventListener('click', async () => {
             if (confirm('Clear chat history?')) {
@@ -442,6 +536,216 @@ function setupAnalyticsChatbot() {
                 });
                 body.innerHTML = '<div class="message bot">History cleared. How can I help you?</div>';
             }
+        });
+    }
+}
+
+function setupDashboard() {
+    const uploadForm = document.getElementById('data-upload-form');
+    const manualBtn = document.getElementById('manual-data-submit');
+    const statusContainer = document.getElementById('parse-status-container');
+    
+    // Gamification Elements
+    const goalInput = document.getElementById('gamification-goal-input');
+    const setGoalBtn = document.getElementById('set-goal-btn');
+    const currentGoalDisplay = document.getElementById('current-goal-display');
+    const badgeDisplay = document.getElementById('badge-icon-display');
+    const rankDisplay = document.getElementById('rank-level-display');
+    const rankProgress = document.getElementById('rank-progress');
+    const scoreDisplay = document.getElementById('score-display');
+    const gamiStatusText = document.getElementById('gami-status-text');
+    const gamiExpensesText = document.getElementById('gami-expenses-text');
+
+    // Load Gamification State
+    let userGoal = localStorage.getItem('gamification_goal');
+    let userScore = parseInt(localStorage.getItem('gamification_score')) || 0;
+
+    const updateGamificationUI = (expenses = 0) => {
+        if (!badgeDisplay) return; // if not on page just return
+
+        if (userGoal) {
+            currentGoalDisplay.textContent = `Current Goal: $${parseFloat(userGoal).toLocaleString()}`;
+        }
+
+        // Rank System
+        const ranks = [
+            { name: 'Bronze Level', icon: '🥉', minScore: 0, maxScore: 99, color: '#F59E0B' },
+            { name: 'Silver Level', icon: '🥈', minScore: 100, maxScore: 299, color: '#9CA3AF' },
+            { name: 'Gold Level', icon: '🥇', minScore: 300, maxScore: 599, color: '#FCD34D' },
+            { name: 'Platinum Level', icon: '💎', minScore: 600, maxScore: 999, color: '#818CF8' },
+            { name: 'Diamond Level', icon: '👑', minScore: 1000, maxScore: 99999, color: '#C084FC' }
+        ];
+
+        let currentRank = ranks[0];
+        let nextRank = ranks[1];
+        for (let i = 0; i < ranks.length; i++) {
+            if (userScore >= ranks[i].minScore) {
+                currentRank = ranks[i];
+                nextRank = ranks[i + 1] || ranks[i];
+            }
+        }
+
+        badgeDisplay.textContent = currentRank.icon;
+        rankDisplay.textContent = currentRank.name;
+        rankDisplay.style.color = currentRank.color;
+        scoreDisplay.textContent = `Score: ${userScore}`;
+
+        // Progress Calculation
+        let progress = 100;
+        if (currentRank !== nextRank) {
+            progress = ((userScore - currentRank.minScore) / (nextRank.minScore - currentRank.minScore)) * 100;
+        }
+        rankProgress.style.width = `${progress}%`;
+
+        // Update Achievement
+        if (userGoal && expenses > 0) {
+            gamiExpensesText.textContent = `$${expenses.toLocaleString()} / $${parseFloat(userGoal).toLocaleString()}`;
+            if (expenses <= parseFloat(userGoal)) {
+                gamiStatusText.textContent = 'On Track! Goal Achieved';
+                gamiStatusText.style.color = '#10B981'; // Green
+            } else {
+                gamiStatusText.textContent = 'Over Budget. Needs Attention.';
+                gamiStatusText.style.color = '#EF4444'; // Red
+            }
+        } else if (userGoal) {
+             gamiExpensesText.textContent = `$0 / $${parseFloat(userGoal).toLocaleString()}`;
+             gamiStatusText.textContent = 'Awaiting Data Validation';
+             gamiStatusText.style.color = '#F59E0B';
+        }
+
+        // Sync to Stats view if applicable
+        const statsGami = document.getElementById('stats-gamification-info');
+        if (statsGami) {
+            statsGami.innerHTML = `
+                <i class="ph ph-medal" style="color:${currentRank.color}; font-size:1.2rem;"></i>
+                <span style="font-weight:600; margin-right: 10px;">${currentRank.name} (Score: ${userScore})</span>
+                <i class="ph ph-target"></i>
+                <span>Goal: $${userGoal ? parseFloat(userGoal).toLocaleString() : 'Not Set'} &nbsp;|&nbsp; Achieved: ${gamiStatusText.textContent}</span>
+            `;
+        }
+    };
+
+    updateGamificationUI();
+
+    if (setGoalBtn) {
+        setGoalBtn.addEventListener('click', () => {
+            const val = goalInput.value.trim();
+            if(!val || isNaN(val)) {
+                alert("Please enter a valid numeric goal.");
+                return;
+            }
+            userGoal = val;
+            localStorage.setItem('gamification_goal', val);
+            goalInput.value = '';
+            alert("Goal set successfully!");
+            updateGamificationUI();
+        });
+    }
+
+    // Add file input logic to standard setup if form missing, but wait...
+    const updateStatsDOM = (stats) => {
+        if (!stats) return;
+        renderBalanceChart(stats.balance);
+        renderStatsChart(stats.expense?.categories || []);
+        renderComparisonChart(stats.budget_vs_expense);
+        
+        document.querySelector('.card:nth-child(1) .card-value').textContent = `$${(stats.balance?.current || 0).toLocaleString()}`;
+        document.querySelector('.card:nth-child(2) .card-value').textContent = `$${(stats.income?.current || 0).toLocaleString()}`;
+        document.querySelector('.card:nth-child(3) .card-value').textContent = `$${(stats.expense?.current || 0).toLocaleString()}`;
+        
+        // Update Donut Center
+        const donutCenterVal = document.querySelector('.donut-center .value');
+        if (donutCenterVal) {
+            donutCenterVal.textContent = `$${(stats.expense?.current || 0).toLocaleString()}`;
+        }
+        
+        // Update Donut Legend
+        const donutLegend = document.getElementById('donut-legend');
+        if (donutLegend && stats.expense?.categories) {
+            donutLegend.innerHTML = stats.expense.categories.map(c => 
+                `<div class="legend-item"><span class="dot" style="background-color: ${c.color};"></span> ${c.name} - $${c.value.toLocaleString()}</div>`
+            ).join('');
+        }
+        
+        // Update small stat trends if desired (Optional: setting standard texts after parsed data)
+        document.querySelectorAll('.card-footer p').forEach(el => el.innerHTML = 'Based on parsed AI extraction');
+        
+        const catCnt1 = document.querySelector('.card:nth-child(1) .categories-count');
+        const catCnt2 = document.querySelector('.card:nth-child(2) .categories-count');
+        const catCnt3 = document.querySelector('.card:nth-child(3) .categories-count');
+        
+        if(catCnt1) catCnt1.innerHTML = `<i class="ph ph-squares-four"></i> Accounts Extracted`;
+        if(catCnt2) catCnt2.innerHTML = `<i class="ph ph-squares-four"></i> Income Streams Extracted`;
+        if(catCnt3) catCnt3.innerHTML = `<i class="ph ph-squares-four"></i> ${stats.expense?.categories?.length || 0} Categories`;
+    };
+
+    const processData = async (formData) => {
+        statusContainer.style.display = 'flex';
+        try {
+            const resp = await fetch('/api/parse-data', {
+                method: 'POST',
+                body: formData
+            });
+            if (!resp.ok) throw new Error("Parse failed");
+            const data = await resp.json();
+            
+            if(data.stats) {
+                updateStatsDOM(data.stats);
+                const expenseNum = data.stats.expense?.current || 0;
+
+                // Gamification Cross-Verification
+                if (userGoal) {
+                    const goalNum = parseFloat(userGoal);
+                    if (expenseNum <= goalNum) {
+                        userScore += 50; 
+                        alert(`Success! You stayed under your goal by $${(goalNum - expenseNum).toLocaleString()}. +50 Points!`);
+                    } else {
+                        userScore += 10;
+                        alert(`You crossed your budget by $${(expenseNum - goalNum).toLocaleString()}, but tracking is a step forward. +10 Points.`);
+                    }
+                    localStorage.setItem('gamification_score', userScore);
+                } else {
+                    alert("Data parsed successfully! You can set a monthly expense goal to earn points and level up!");
+                }
+                
+                updateGamificationUI(expenseNum);
+
+                // Switch to analytics view automatically
+                document.querySelector('.nav-link[data-view="analytics"]').click();
+            }
+        } catch(e) {
+            alert("Error parsing data: " + e.message);
+        } finally {
+            statusContainer.style.display = 'none';
+        }
+    };
+
+    if (uploadForm) {
+        const fileInput = document.getElementById('data-files');
+        const listDiv = document.getElementById('selected-files-list');
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                listDiv.innerHTML = Array.from(fileInput.files).map(f => `<div><i class="ph ph-file-text"></i> ${f.name}</div>`).join('');
+            } else {
+                listDiv.innerHTML = '';
+            }
+        });
+
+        uploadForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (fileInput.files.length === 0) return alert("Select files first.");
+            const formData = new FormData(uploadForm);
+            processData(formData);
+        });
+    }
+
+    if (manualBtn) {
+        manualBtn.addEventListener('click', () => {
+            const text = document.getElementById('manual-data-input').value;
+            if (!text.trim()) return alert("Enter some text first.");
+            const formData = new FormData();
+            formData.append('text_data', text);
+            processData(formData);
         });
     }
 }

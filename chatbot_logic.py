@@ -1,100 +1,214 @@
 import os
-import google.generativeai as genai
-from tavily import TavilyClient
+import json
+import requests
 from dotenv import load_dotenv
+from groq import Groq
+from tavily import TavilyClient
 
 load_dotenv()
 
-# Config
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+# ================= CONFIG =================
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+client = Groq(api_key=GROQ_API_KEY)
+tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-tavily = None
-if TAVILY_API_KEY:
-    tavily = TavilyClient(api_key=TAVILY_API_KEY)
+MODEL = "openai/gpt-oss-120b"
 
-# Stable model
-model = genai.GenerativeModel("gemini-3-flash-preview") # Using a stable name, previous 'gemini-3' was likely a typo or future reference in user's prompt
 
+# ================= LLM CALL =================
+def call_llm(prompt):
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": "You are ArthSaathi, a financial AI advisor."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content
+
+
+# ================= FOLLOWUPS (PROMPT-DRIVEN) =================
 def generate_followups(question):
-    """Generate 3 unique follow-up questions"""
     prompt = f"""
-    You are a financial assistant.
+You are an expert financial interviewer.
 
-    Generate exactly 3 unique follow-up questions 
-    to better understand the user's situation.
+Given a user's question, generate 3 highly relevant follow-up questions.
 
-    Rules:
-    - Questions must be different from each other
-    - Keep them short and relevant
-    - Ask one about income, one about risk, one about obligations
+Rules:
+- Do NOT use fixed categories like income/risk/obligations
+- Instead, infer what information is missing
+- Each question must explore a DIFFERENT aspect
+- Questions must help build a better financial plan
+- Keep them simple and conversational
 
-    Question: {question}
+Return ONLY valid JSON in this format:
 
-    Return ONLY numbered questions.
-    """
+{{
+  "questions": [
+    "...",
+    "...",
+    "..."
+  ]
+}}
+
+User Question:
+{question}
+"""
+
+    text = call_llm(prompt)
+
     try:
-        response = model.generate_content(prompt)
-        lines = response.text.split("\n")
-        questions = []
+        data = json.loads(text)
+        return data["questions"][:3]
+    except:
+        # fallback if model breaks JSON
+        return [
+            "What is your monthly income range?",
+            "What is your investment time horizon?",
+            "How much risk are you comfortable with?"
+        ]
 
-        for line in lines:
-            line = line.strip()
-            if line:
-                # remove numbering like 1. 2. etc
-                cleaned = line.lstrip("1234567890. ").strip()
-                if cleaned:
-                    questions.append(cleaned)
-        
-        return questions[:3]
-    except Exception as e:
-        print(f"Error generating followups: {e}")
-        return ["What is your monthly income?", "What is your risk tolerance?", "Do you have any major monthly obligations?"]
 
+# ================= TAVILY SEARCH =================
 def tavily_search(query):
-    """Web search using Tavily"""
     if not tavily:
-        return "No web data available (Tavily not configured)"
-    try:
-        result = tavily.search(query=query, max_results=3)
-        sources = []
-        for r in result["results"]:
-            sources.append(f"{r['title']}: {r['content']}")
-        return "\n".join(sources)
-    except Exception as e:
-        print(f"Tavily search error: {e}")
-        return "No web data available"
+        return "No web data"
 
+    res = tavily.search(query=query, max_results=3)
+    data = []
+    for r in res["results"]:
+        url = r.get("url", "Unknown Source")
+        content = r.get("content", "")
+        data.append(f"Source URL: {url}\nContent: {content}")
+    return "\n\n".join(data)
+
+
+# ================= FINAL ANSWER =================
 def generate_final_answer(question, answers, web_data):
-    """Final reasoning agent"""
-    context = "\n".join([f"Q&A: {a}" for a in answers])
+    context = "\n".join([
+        f"Q{i+1}: {q}\nA{i+1}: {a}"
+        for i, (q, a) in enumerate(answers)
+    ])
 
     prompt = f"""
-    You are an expert financial advisor AI named ArthSaathi.
+You are ArthSaathi, an expert financial advisor.
 
-    User Question:
-    {question}
+User Question:
+{question}
 
-    User Details Provided:
-    {context}
+User Profile Details:
+{context}
 
-    Web Insights:
-    {web_data}
+Web Data:
+{web_data}
 
-    Instructions:
-    - Give a personalized investment plan
-    - Include allocation (percentages)
-    - Keep it simple and practical
-    - Avoid generic advice
-    - Use a professional yet helpful tone
+Task:
+- Create a personalized investment plan
+- Provide asset allocation in %
+- Keep it simple and practical
+- Add a financial confidence score (0-100)
+- Break down score into:
+  Risk Alignment, Practicality, Data Completeness
+- Mention sources used
 
-    Final Answer:
-    """
+Return clear structured output.
+"""
+
+    return call_llm(prompt)
+
+
+# ================= VOICE SUMMARY =================
+def summarize_for_voice(text):
+    prompt = f"""
+Summarize this in simple spoken English under 500 characters:
+
+{text}
+"""
+    return call_llm(prompt)[:500]
+
+
+# ================= SARVAM STT =================
+def speech_to_text(audio_file_path):
+    url = "https://api.sarvam.ai/v1/speech-to-text"
+
+    headers = {
+        "Authorization": f"Bearer {SARVAM_API_KEY}"
+    }
+
+    files = {
+        "file": open(audio_file_path, "rb")
+    }
+
+    data = {
+        "model": "saaras:v2",
+        "language": "auto"
+    }
+
     try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"I apologize, I encountered an error generating your plan: {str(e)}"
+        response = requests.post(url, headers=headers, files=files, data=data)
+        return response.json().get("text", "")
+    except:
+        return ""
+
+
+# ================= SARVAM TTS =================
+def text_to_speech(text):
+    url = "https://api.sarvam.ai/v1/text-to-speech"
+
+    headers = {
+        "Authorization": f"Bearer {SARVAM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    short_text = summarize_for_voice(text)
+
+    payload = {
+        "text": short_text,
+        "voice": "shubh",
+        "format": "wav"
+    }
+
+    res = requests.post(url, headers=headers, json=payload)
+
+    if res.status_code == 200:
+        with open("output.wav", "wb") as f:
+            f.write(res.content)
+        return "output.wav"
+    return None
+
+
+# ================= PIPELINE =================
+def run_agent(question, answers):
+    web_data = tavily_search(question)
+    final = generate_final_answer(question, answers, web_data)
+
+    print("\n💡 FINAL ANSWER:\n", final)
+
+    audio = text_to_speech(final)
+    return final, audio
+
+
+# ================= MAIN =================
+if __name__ == "__main__":
+
+    q = input("Ask your financial question: ")
+
+    followups = generate_followups(q)
+
+    answers = []
+
+    print("\n🤖 Answer these:\n")
+
+    for f in followups:
+        print("Q:", f)
+        answers.append(input("A: "))
+
+    final_text, audio = run_agent(q, answers)
+
+    print("\nFINAL:\n", final_text)
+
+    if audio:
+        print("\n🔊 Voice saved:", audio)
