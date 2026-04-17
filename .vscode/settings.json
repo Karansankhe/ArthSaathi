@@ -1,0 +1,1 @@
+{ "terminal.integrated.environmentChangesEnabled": true, "terminal.integrated.environmentChangesIndicator": "on", "python.envFile": "${workspaceFolder}/.env" }

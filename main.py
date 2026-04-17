@@ -10,7 +10,8 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
+from auth import get_current_user
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -241,11 +242,17 @@ async def root(request: Request):
     )
 
 
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    request_id = str(uuid.uuid4())[:8]
+@app.get("/protected")
+def protected(user=Depends(get_current_user)):
+    return {
+        "message": "You are authenticated",
+        "user": user
+    }
 
-    logger.info(f"🆔 Request ID: {request_id}")
+@app.post("/chat")
+async def chat(req: ChatRequest, user=Depends(get_current_user)):
+    request_id = str(uuid.uuid4())[:8]
+    logger.info(f"🆔 [{request_id}] User: {user.get('email', user.get('sub', 'unknown'))}")
 
     if not req.query.strip():
         logger.warning(f"⚠️ [{request_id}] Empty query")

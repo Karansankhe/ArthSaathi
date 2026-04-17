@@ -1,5 +1,145 @@
+// ─────────────────────────────────────────────
+// SUPABASE INIT
+// ─────────────────────────────────────────────
+const SUPABASE_URL  = 'https://xlweytqmwqieulquczrh.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_SH7v5dlqVoB_JApmis8e_g_auXtBY5Z';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ─────────────────────────────────────────────
+// AUTH STATE
+// ─────────────────────────────────────────────
+let currentSession = null;
+
+async function initAuth() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session) {
+        currentSession = session;
+        showDashboard(session.user);
+    } else {
+        showAuthOverlay();
+    }
+
+    // Listen for auth changes (e.g. token refresh, logout from another tab)
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+        currentSession = session;
+        if (session) {
+            showDashboard(session.user);
+        } else {
+            showAuthOverlay();
+        }
+    });
+}
+
+function showDashboard(user) {
+    document.getElementById('auth-overlay').classList.add('hidden');
+    // Update user info in header
+    const nameEl  = document.querySelector('.user-name');
+    const emailEl = document.querySelector('.user-email');
+    if (nameEl)  nameEl.textContent  = user.user_metadata?.full_name || user.email.split('@')[0];
+    if (emailEl) emailEl.textContent = user.email;
+}
+
+function showAuthOverlay() {
+    document.getElementById('auth-overlay').classList.remove('hidden');
+}
+
+// ─────────────────────────────────────────────
+// AUTH UI HELPERS
+// ─────────────────────────────────────────────
+function switchTab(tab) {
+    const isLogin = tab === 'login';
+    document.getElementById('tab-login').classList.toggle('active', isLogin);
+    document.getElementById('tab-signup').classList.toggle('active', !isLogin);
+    document.getElementById('form-login').style.display  = isLogin ? '' : 'none';
+    document.getElementById('form-signup').style.display = isLogin ? 'none' : '';
+    clearAuthError();
+}
+
+function showAuthError(msg) {
+    const el = document.getElementById('auth-error');
+    el.textContent = msg;
+    el.classList.add('show');
+}
+
+function clearAuthError() {
+    const el = document.getElementById('auth-error');
+    el.textContent = '';
+    el.classList.remove('show');
+}
+
+function setAuthLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    btn.disabled  = loading;
+    btn.textContent = loading ? 'Please wait...' : (btnId === 'login-btn' ? 'Sign In' : 'Create Account');
+}
+
+// ─────────────────────────────────────────────
+// LOGIN
+// ─────────────────────────────────────────────
+async function handleLogin() {
+    clearAuthError();
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    if (!email || !password) { showAuthError('Please fill in all fields.'); return; }
+
+    setAuthLoading('login-btn', true);
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    setAuthLoading('login-btn', false);
+
+    if (error) showAuthError(error.message);
+}
+
+// ─────────────────────────────────────────────
+// SIGNUP
+// ─────────────────────────────────────────────
+async function handleSignup() {
+    clearAuthError();
+    const name     = document.getElementById('signup-name').value.trim();
+    const email    = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+
+    if (!name || !email || !password) { showAuthError('Please fill in all fields.'); return; }
+    if (password.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
+
+    setAuthLoading('signup-btn', true);
+    const { error } = await supabaseClient.auth.signUp({
+        email, password,
+        options: { data: { full_name: name } }
+    });
+    setAuthLoading('signup-btn', false);
+
+    if (error) {
+        showAuthError(error.message);
+    } else {
+        showAuthError('✅ Account created! Check your email to confirm, then sign in.');
+        document.getElementById('auth-error').style.color = '#6EE7B7';
+        document.getElementById('auth-error').style.background = 'rgba(16,185,129,0.1)';
+        switchTab('login');
+    }
+}
+
+// ─────────────────────────────────────────────
+// LOGOUT
+// ─────────────────────────────────────────────
+async function handleLogout(e) {
+    e.preventDefault();
+    await supabaseClient.auth.signOut();
+}
+
+// ─────────────────────────────────────────────
+// EXPOSE GLOBALS FOR INLINE onclick HANDLERS
+// ─────────────────────────────────────────────
+window.switchTab   = switchTab;
+window.handleLogin = handleLogin;
+window.handleSignup = handleSignup;
+window.handleLogout = handleLogout;
+
+// ─────────────────────────────────────────────
+// APP INIT
+// ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    // Initial State
+    initAuth();
     initCharts();
     setupNavigation();
     setupChat();
@@ -102,9 +242,15 @@ function setupChat() {
         let fullText = '';
 
         try {
+            // Build auth headers — attach JWT so FastAPI can verify the user
+            const headers = { 'Content-Type': 'application/json' };
+            if (currentSession?.access_token) {
+                headers['Authorization'] = `Bearer ${currentSession.access_token}`;
+            }
+
             const response = await fetch('/chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ query })
             });
 

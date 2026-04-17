@@ -5,15 +5,243 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FinSet - Financial Analytics Dashboard</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* ── Auth Overlay ────────────────────────── */
+        #auth-overlay {
+            position: fixed; inset: 0;
+            background: #f8f9fb;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999;
+            font-family: 'Outfit', sans-serif;
+        }
+        #auth-overlay.hidden { display: none; }
+
+        /* Two-column layout */
+        .auth-layout {
+            display: flex;
+            width: 100%; max-width: 900px;
+            min-height: 560px;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+        }
+
+        /* Left panel — brand side */
+        .auth-brand {
+            flex: 1;
+            background: #cf0ccf;
+            padding: 56px 48px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .auth-brand-logo {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .auth-brand-icon {
+            width: 40px; height: 40px; border-radius: 10px;
+            background: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 18px; color: #1a1f2e;
+        }
+        .auth-brand-logo span {
+            font-size: 20px; font-weight: 700; color: #fff;
+        }
+        .auth-brand-body { }
+        .auth-brand-title {
+            font-size: 28px; font-weight: 700; color: #fff;
+            line-height: 1.3; margin-bottom: 14px;
+        }
+        .auth-brand-sub {
+            font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.6;
+        }
+        .auth-brand-stats {
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .auth-stat-glass {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(12px);
+            border-radius: 14px;
+            padding: 14px 18px;
+            display: flex; align-items: center; gap: 14px;
+        }
+        .auth-stat-glass .stat-num {
+            font-size: 22px; font-weight: 700; color: #fff;
+        }
+        .auth-stat-glass .stat-label {
+            font-size: 12px; color: rgba(255,255,255,0.45);
+        }
+        .auth-stat-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #4ade80; flex-shrink: 0;
+        }
+
+        /* Right panel — form side */
+        .auth-card {
+            flex: 1;
+            background: #ffffff;
+            padding: 52px 48px;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        @keyframes slideUp {
+            from { opacity:0; transform:translateY(24px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+        .auth-card { animation: slideUp 0.4s cubic-bezier(.22,1,.36,1); }
+
+        .auth-title {
+            font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 4px;
+        }
+        .auth-sub {
+            font-size: 14px; color: #9ca3af; margin-bottom: 28px;
+        }
+        .auth-tabs {
+            display: flex; gap: 4px;
+            background: #f3f4f6;
+            border-radius: 10px; padding: 4px;
+            margin-bottom: 28px;
+        }
+        .auth-tab {
+            flex: 1; padding: 8px 0; border: none; cursor: pointer;
+            border-radius: 7px; font-size: 14px; font-weight: 600;
+            transition: all 0.2s;
+            background: transparent; color: #9ca3af;
+        }
+        .auth-tab.active {
+            background: #fff; color: #111827;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+        }
+        .auth-field { margin-bottom: 14px; }
+        .auth-field label {
+            display: block; font-size: 13px; font-weight: 500;
+            color: #374151; margin-bottom: 6px;
+        }
+        .auth-field input {
+            width: 100%; padding: 11px 14px; border-radius: 10px;
+            background: #f9fafb; border: 1.5px solid #e5e7eb;
+            color: #111827; font-size: 14px; font-family: 'Outfit', sans-serif;
+            outline: none; transition: border-color 0.2s; box-sizing: border-box;
+        }
+        .auth-field input:focus { border-color: #6b7280; background: #fff; }
+        .auth-field input::placeholder { color: #d1d5db; }
+        .auth-btn {
+            width: 100%; padding: 12px; margin-top: 10px;
+            background: #1a1f2e;
+            border: none; border-radius: 10px; color: #fff;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            transition: background 0.2s, transform 0.15s;
+        }
+        .auth-btn:hover { background: #2d3446; transform: translateY(-1px); }
+        .auth-btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
+        .auth-error {
+            background: #fef2f2; border: 1px solid #fecaca;
+            color: #b91c1c; border-radius: 8px; padding: 10px 14px;
+            font-size: 13px; margin-bottom: 14px; display: none;
+        }
+        .auth-error.show { display: block; }
+
+        /* Responsive — stack on small screens */
+        @media (max-width: 680px) {
+            .auth-layout { flex-direction: column; border-radius: 0; max-width: 100%; min-height: 100dvh; }
+            .auth-brand { padding: 32px 28px; flex: unset; }
+            .auth-brand-stats { display: none; }
+            .auth-card { padding: 36px 28px; }
+        }
+    </style>
 </head>
 
 <body>
+
+    <!-- ═══════════════════ AUTH OVERLAY ═══════════════════ -->
+    <div id="auth-overlay">
+        <div class="auth-layout">
+
+            <!-- Left: Brand panel -->
+            <div class="auth-brand">
+                <div class="auth-brand-logo">
+                    <div class="auth-brand-icon">F</div>
+                    <span>FinSet</span>
+                </div>
+
+                <div class="auth-brand-body">
+                    <div class="auth-brand-title">Your personal<br>financial intelligence.</div>
+                    <div class="auth-brand-sub">Track spending, grow savings, and get AI-powered advice — all in one place.</div>
+                </div>
+
+                <div class="auth-brand-stats">
+                    <div class="auth-stat-glass">
+                        <div class="auth-stat-dot"></div>
+                        <div>
+                            <div class="stat-num">$15,700</div>
+                            <div class="stat-label">Total balance this month</div>
+                        </div>
+                    </div>
+                    <div class="auth-stat-glass">
+                        <div class="auth-stat-dot" style="background:#60a5fa"></div>
+                        <div>
+                            <div class="stat-num">+12.1%</div>
+                            <div class="stat-label">Growth vs last month</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Form panel -->
+            <div class="auth-card">
+                <div class="auth-title">Welcome back</div>
+                <div class="auth-sub">Sign in to your financial dashboard</div>
+
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+                    <button class="auth-tab" id="tab-signup" onclick="switchTab('signup')">Sign Up</button>
+                </div>
+
+                <div id="auth-error" class="auth-error"></div>
+
+                <!-- Login Form -->
+                <div id="form-login">
+                    <div class="auth-field">
+                        <label>Email address</label>
+                        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+                    </div>
+                    <div class="auth-field">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <button class="auth-btn" id="login-btn" onclick="handleLogin()">Sign In</button>
+                </div>
+
+                <!-- Signup Form -->
+                <div id="form-signup" style="display:none">
+                    <div class="auth-field">
+                        <label>Full name</label>
+                        <input type="text" id="signup-name" placeholder="Adaline Lively">
+                    </div>
+                    <div class="auth-field">
+                        <label>Email address</label>
+                        <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email">
+                    </div>
+                    <div class="auth-field">
+                        <label>Password</label>
+                        <input type="password" id="signup-password" placeholder="Min. 6 characters" autocomplete="new-password">
+                    </div>
+                    <button class="auth-btn" id="signup-btn" onclick="handleSignup()">Create Account</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
@@ -46,7 +274,7 @@
             <div class="sidebar-footer">
                 <ul>
                     <li><a href="#"><i class="ph ph-question"></i> <span>Help</span></a></li>
-                    <li><a href="#"><i class="ph ph-sign-out"></i> <span>Log out</span></a></li>
+                    <li><a href="#" id="logout-btn" onclick="handleLogout(event)"><i class="ph ph-sign-out"></i> <span>Log out</span></a></li>
                 </ul>
                 <div class="theme-toggle">
                     <button class="active"><i class="ph ph-sun"></i></button>
