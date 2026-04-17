@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArthSaathi - Financial Analytics Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="/dashboard" class="logo" style="text-decoration: none; color: inherit;">
+                    <div class="logo-icon">A</div>
+                    <span>ArthSaathi</span>
+                </a>
+                <button class="collapse-btn">
+                    <i class="ph ph-caret-left"></i>
+                </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="{{ 'active' if active_view == 'dashboard' else '' }}"><a href="#" class="nav-link"
+                            data-view="dashboard"><i class="ph ph-squares-four"></i>
+                            <span data-i18n="nav.dashboard">Dashboard</span></a></li>
+                    <li class="{{ 'active' if active_view == 'analytics' else '' }}"><a href="#" class="nav-link"
+                            data-view="analytics"><i class="ph ph-chart-line-up"></i> <span
+                                data-i18n="nav.analytics">Analytics</span></a></li>
+                    <li class="{{ 'active' if active_view == 'team-fin' else '' }}"><a href="#" class="nav-link"
+                            data-view="team-fin"><i class="ph ph-robot"></i> <span data-i18n="nav.teamfin">Team Fin
+                                AI</span></a></li>
+                    <li class="{{ 'active' if active_view == 'avatar' else '' }}"><a href="#" class="nav-link"
+                            data-view="avatar"><i class="ph ph-video-camera"></i> <span data-i18n="nav.avatar">AI
+                                Avatar</span></a></li>
+                    <li><a href="/shopping-assistant" class="shopping-link"><i class="ph ph-shopping-cart"></i>
+                            <span data-i18n="nav.shopping">Shopping Assistant</span></a></li>
+                    <li><a href="/gst-advisor" class="gst-advisor-link"><i class="ph ph-scales"></i>
+                            <span data-i18n="nav.gst">GST Advisor</span></a></li>
+                    <li class="{{ 'active' if active_view == 'stock-analyzer' else '' }}"><a href="#" class="nav-link"
+                            data-view="stock-analyzer"><i class="ph ph-trend-up"></i> <span data-i18n="nav.stock">Stock
+                                Analyzer</span></a>
+                    </li>
+                    <li><a href="/offline" class="offline-mode-link"><i class="ph ph-wifi-slash"></i> <span
+                                data-i18n="nav.offline">Offline Mode</span></a></li>
+
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <ul>
+                    <li><a href="#"><i class="ph ph-question"></i> <span data-i18n="nav.help">Help</span></a></li>
+                    <li><a href="/"><i class="ph ph-sign-out"></i> <span data-i18n="nav.logout">Log out</span></a></li>
+                </ul>
+                <div class="theme-toggle">
+                    <button class="active"><i class="ph ph-sun"></i></button>
+                    <button><i class="ph ph-moon"></i></button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="header-search">
+                    <div class="search-box">
+                        <i class="ph ph-magnifying-glass"></i>
+                        <input type="text" data-i18n-placeholder="header.search" placeholder="Search...">
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <!-- Google Translate Element -->
+                    <div id="google_translate_element"></div>
+                    <button class="icon-btn"><i class="ph ph-bell"></i><span class="badge">3</span></button>
+                    <div class="user-profile">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Adaline" alt="User">
+                        <div class="user-info">
+                            <span class="user-name">Adaline Lively</span>
+                            <span class="user-email">adaline@gmail.com</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="view-content {{ 'active' if active_view == 'dashboard' else '' }}">
+                <section class="content-header">
+                    <div class="title-group">
+                        <h1 data-i18n="dashboard.title">Dashboard Data Hub</h1>
+                        <p data-i18n="dashboard.subtitle">Upload your data to power the Analytics charts dynamically</p>
+                    </div>
+                </section>
+
+                <div class="upload-options-grid" style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div class="upload-card card" style="flex: 1 1 45%; padding: 24px;">
+                        <h3 style="margin-bottom: 12px; font-size: 1.2rem;"><i class="ph ph-upload-simple"></i> <span
+                                data-i18n="dashboard.upload.title">Upload Files</span></h3>
+                        <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: 20px;"
+                            data-i18n="dashboard.upload.desc">Select multiple documents containing your spending data
+                            (bank statements, receipts, texts).</p>
+                        <form id="data-upload-form" enctype="multipart/form-data">
+                            <input type="file" id="data-files" name="files" multiple accept=".txt,.csv,.pdf,.png,.jpg"
+                                style="display:none;">
+                            <label for="data-files" class="primary-btn"
+                                style="cursor: pointer; display: inline-flex; justify-content: center; width: 100%; box-sizing: border-box; text-align: center;"><i
+                                    class="ph ph-files"></i> <span data-i18n="dashboard.upload.choose">Choose
+                                    Files</span></label>
+                            <div id="selected-files-list" style="margin-top: 10px; font-size: 0.85rem; color: #374151;">
+                            </div>
+                            <button type="submit" class="secondary-btn" style="margin-top:10px; width:100%;"><i
+                                    class="ph ph-rocket"></i> <span data-i18n="dashboard.upload.parse">Parse &amp;
+                                    Analyze Files</span></button>
+                        </form>
+                    </div>
+
+                    <div class="upload-card card" style="flex: 1 1 45%; padding: 24px;">
+                        <h3 style="margin-bottom: 12px; font-size: 1.2rem;"><i class="ph ph-keyboard"></i> <span
+                                data-i18n="dashboard.manual.title">Manual Entry</span></h3>
+                        <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: 20px;"
+                            data-i18n="dashboard.manual.desc">Paste or type your financial transactions directly to be
+                            analyzed.</p>
+                        <textarea id="manual-data-input" data-i18n-placeholder="dashboard.manual.placeholder"
+                            placeholder="E.g., Spent $50 on Cafe this month, Rent is $1200..." rows="4"
+                            style="width: 100%; padding: 12px; border: 1px solid #E5E7EB; border-radius: 8px; font-family: inherit; margin-bottom: 10px; resize: vertical; box-sizing: border-box;"></textarea>
+                        <button id="manual-data-submit" class="primary-btn" style="width: 100%;"><i
+                                class="ph ph-magic-wand"></i> <span data-i18n="dashboard.manual.process">Process
+                                Text</span></button>
+                    </div>
+                </div>
+
+                <div id="parse-status-container"
+                    style="display:none; margin-top:20px; align-items:center; justify-content: center; padding: 16px;"
+                    class="card">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <i class="ph ph-spinner ph-spin" style="font-size: 1.5rem; color: #818CF8;"></i> <span
+                            id="parse-status-text" style="font-weight: 500;">Parsing your data using AI...</span>
+                    </div>
+                </div>
+
+                <!-- Gamification Section -->
+                <section class="gamification-section" style="margin-top: 32px;">
+                    <div class="title-group" style="margin-bottom: 20px;">
+                        <h2><i class="ph ph-trophy"></i> <span data-i18n="gami.title">Your Achievement Progress</span>
+                        </h2>
+                        <p data-i18n="gami.subtitle">Set a spending goal, parse your data, and level up!</p>
+                    </div>
+                    <div class="gamification-grid" style="display: flex; gap: 20px; flex-wrap: wrap;">
+
+                        <!-- Goal Setting Card -->
+                        <div class="gami-card card"
+                            style="flex: 1 1 30%; padding: 24px; position: relative; overflow: hidden;">
+                            <div class="card-bg-glow"
+                                style="background: radial-gradient(circle, rgba(129,140,248,0.1) 0%, transparent 70%);">
+                            </div>
+                            <h3
+                                style="margin-bottom: 16px; font-size: 1.2rem; display:flex; align-items:center; gap:8px;">
+                                <i class="ph ph-target" style="color:var(--accent-purple);"></i> <span
+                                    data-i18n="gami.goal.title">Monthly Goal Settings</span>
+                            </h3>
+                            <div style="margin-bottom: 16px;">
+                                <label style="display:block; font-size:14px; margin-bottom:8px; font-weight:500;"
+                                    data-i18n="gami.goal.label">Max Expense Target ($)</label>
+                                <input type="number" id="gamification-goal-input"
+                                    data-i18n-placeholder="gami.goal.placeholder" placeholder="e.g. 2000"
+                                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size:16px;">
+                            </div>
+                            <button id="set-goal-btn" class="primary-btn" style="width:100%; justify-content:center;"
+                                data-i18n="gami.goal.btn">Set Goal</button>
+                            <p id="current-goal-display"
+                                style="margin-top:16px; font-size:14px; color:var(--text-muted); font-weight:600;"
+                                data-i18n="gami.goal.current">
+                                Current Goal: Not Set</p>
+                        </div>
+
+                        <!-- Rank & Level Card -->
+                        <div class="gami-card card"
+                            style="flex: 1 1 35%; padding: 24px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+                            <h3
+                                style="margin-bottom: 16px; font-size: 1.2rem; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                <i class="ph ph-medal" style="color:#F59E0B;"></i> <span
+                                    data-i18n="gami.rank.title">Current Rank</span>
+                            </h3>
+                            <div class="badge-icon" id="badge-icon-display"
+                                style="font-size: 48px; margin-bottom: 12px; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.1));">
+                                🥉</div>
+                            <h2 id="rank-level-display"
+                                style="font-size: 24px; color: var(--text-main); margin-bottom: 8px;"
+                                data-i18n="gami.rank.bronze">Bronze Level</h2>
+                            <div class="progress-bar-bg"
+                                style="background:#F3F4F6; height:12px; border-radius:6px; overflow:hidden; margin-bottom:8px;">
+                                <div id="rank-progress"
+                                    style="background: linear-gradient(90deg, #4F46E5, #818CF8); width: 0%; height: 100%; transition: width 0.5s ease;">
+                                </div>
+                            </div>
+                            <p id="score-display" style="font-size:14px; color:var(--text-muted); font-weight:600;"
+                                data-i18n="gami.score">
+                                Score: 0</p>
+                        </div>
+
+                        <!-- Stats & Gamification Info -->
+                        <div class="gami-card card"
+                            style="flex: 1 1 25%; padding: 24px; display:flex; flex-direction:column;">
+                            <h3
+                                style="margin-bottom: 16px; font-size: 1.2rem; display:flex; align-items:center; gap:8px;">
+                                <i class="ph ph-chart-polar" style="color:var(--trend-up);"></i> <span
+                                    data-i18n="gami.achievement.title">Achievement Status</span>
+                            </h3>
+                            <div style="flex:1; display:flex; flex-direction:column; justify-content:space-around;">
+                                <div>
+                                    <p style="font-size:12px; color:var(--text-muted);">Status</p>
+                                    <p id="gami-status-text" style="font-size:16px; font-weight:600; color:#F59E0B;"
+                                        data-i18n="gami.status">
+                                        Awaiting Data</p>
+                                </div>
+                                <div style="margin-top:12px;">
+                                    <p style="font-size:12px; color:var(--text-muted);" data-i18n="gami.expenses.label">
+                                        Expenses Tracked / Goal</p>
+                                    <p id="gami-expenses-text"
+                                        style="font-size:18px; font-weight:700; color:var(--text-main);"
+                                        data-i18n="gami.expenses.val">$0 / Not Set
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+            </div>
+
+            <!-- Analytics View -->
+            <div id="analytics-view" class="view-content {{ 'active' if active_view == 'analytics' else '' }}">
+                <section class="content-header">
+                    <div class="title-group">
+                        <h1 data-i18n="analytics.title">Analytics</h1>
+                        <p data-i18n="analytics.subtitle">Detailed overview of your financial situation</p>
+                    </div>
+                    <div class="header-controls">
+                        <div class="date-picker">
+                            <i class="ph ph-calendar-blank"></i>
+                            <span data-i18n="analytics.thismonth">This month</span>
+                        </div>
+                        <button class="secondary-btn"><i class="ph ph-squares-four"></i> <span
+                                data-i18n="analytics.manage">Manage widgets</span></button>
+                        <button class="primary-btn"><i class="ph ph-plus"></i> <span data-i18n="analytics.add">Add new
+                                widget</span></button>
+                    </div>
+                </section>
+
+                <!-- Gamification Indicator -->
+                <div id="stats-gamification-info" class="card"
+                    style="margin-bottom: 24px; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(135deg, rgba(79, 70, 229, 0.05), rgba(129, 140, 248, 0.1)); border: 1px dashed var(--accent-purple); border-radius: 16px;">
+                    <!-- Synchronized by JS -->
+                </div>
+
+                <section class="overview-cards">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title" data-i18n="analytics.balance.title">Total balance</span>
+                            <div class="selector">USD <i class="ph ph-caret-down"></i></div>
+                        </div>
+                        <div class="card-value">-</div>
+                        <div class="card-stats">
+                            <span class="trend positive"><i class="ph ph-minus"></i> -</span>
+                            <div class="stat-item">
+                                <i class="ph ph-arrows-left-right"></i>
+                                <span>- transactions</span>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <p data-i18n="analytics.upload.hint">Upload data to see insights</p>
+                            <div class="categories-count">
+                                <i class="ph ph-squares-four"></i> - categories
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title" data-i18n="analytics.income.title">Income</span>
+                            <div class="selector">USD <i class="ph ph-caret-down"></i></div>
+                        </div>
+                        <div class="card-value">-</div>
+                        <div class="card-stats">
+                            <span class="trend positive"><i class="ph ph-minus"></i> -</span>
+                            <div class="stat-item">
+                                <i class="ph ph-arrows-left-right"></i>
+                                <span>- transactions</span>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <p data-i18n="analytics.upload.hint">Upload data to see insights</p>
+                            <div class="categories-count">
+                                <i class="ph ph-squares-four"></i> - categories
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title" data-i18n="analytics.expense.title">Expense</span>
+                            <div class="selector">USD <i class="ph ph-caret-down"></i></div>
+                        </div>
+                        <div class="card-value">-</div>
+                        <div class="card-stats">
+                            <span class="trend negative"><i class="ph ph-minus"></i> -</span>
+                            <div class="stat-item">
+                                <i class="ph ph-arrows-left-right"></i>
+                                <span>- transactions</span>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <p data-i18n="analytics.upload.hint">Upload data to see insights</p>
+                            <div class="categories-count">
+                                <i class="ph ph-squares-four"></i> - categories
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="charts-grid">
+                    <div class="chart-container main-chart">
+                        <div class="chart-header">
+                            <h3 data-i18n="analytics.chart.balance">Total balance overview</h3>
+                            <div class="chart-legend">
+                                <span class="legend-item"><span class="dot primary"></span> <span
+                                        data-i18n="analytics.legend.thismonth">This month</span></span>
+                                <span class="legend-item"><span class="dot dash"></span> <span
+                                        data-i18n="analytics.legend.lastmonth">Same period last month</span></span>
+                            </div>
+                            <div class="selector"><span data-i18n="analytics.balance.title">Total balance</span> <i
+                                    class="ph ph-caret-down"></i></div>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="balanceChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-container side-chart">
+                        <div class="chart-header">
+                            <h3 data-i18n="analytics.chart.stats">Statistics</h3>
+                            <div class="chart-actions">
+                                <div class="selector"><span data-i18n="analytics.expense.title">Expense</span> <i
+                                        class="ph ph-caret-down"></i></div>
+                                <button class="text-btn">Details <i class="ph ph-caret-right"></i></button>
+                            </div>
+                        </div>
+                        <p class="chart-sub" data-i18n="analytics.chart.increase">You have an increase of expenses in
+                            several categories this month</p>
+                        <div class="chart-body"
+                            style="height: 260px; display: flex; align-items: center; justify-content: center;">
+                            <div class="donut-wrapper">
+                                <canvas id="statsChart"></canvas>
+                                <div class="donut-center">
+                                    <span class="label" data-i18n="analytics.donut.label">This month expense</span>
+                                    <span class="value">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="donut-legend" id="donut-legend">
+                            <!-- Dynamically generated -->
+                        </div>
+                    </div>
+
+                    <div class="chart-container bottom-chart">
+                        <div class="chart-header">
+                            <h3 data-i18n="analytics.chart.compare">Comparing budget and expense</h3>
+                            <div class="chart-legend">
+                                <span class="legend-item"><span class="dot lavender"></span> <span
+                                        data-i18n="analytics.legend.expense">Expense</span></span>
+                                <span class="legend-item"><span class="dot purple"></span> <span
+                                        data-i18n="analytics.legend.budget">Budget</span></span>
+                            </div>
+                            <div class="selector"><span data-i18n="analytics.thisyear">This year</span> <i
+                                    class="ph ph-caret-down"></i></div>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="comparisonChart"></canvas>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Team Fin AI View -->
+            <div id="team-fin-view" class="view-content {{ 'active' if active_view == 'team-fin' else '' }}">
+                <section class="content-header">
+                    <div class="title-group">
+                        <h1 data-i18n="teamfin.title">Team Fin AI Advisor</h1>
+                        <p data-i18n="teamfin.subtitle">Intelligent multi-agent assistance for your financial goals</p>
+                    </div>
+                </section>
+
+                <div class="ai-dashboard-layout">
+                    <div class="chat-main-panel">
+                        <div class="agent-status-bar" id="agent-status">
+                            <div class="status-indicator">
+                                <div class="pulse-dot"></div>
+                                <span id="status-text" data-i18n="teamfin.ready">Advisor is ready</span>
+                            </div>
+                        </div>
+
+                        <div id="chat-messages" class="chat-messages-scroll">
+                            <div class="message ai">
+                                <div class="msg-header">
+                                    <i class="ph ph-robot"></i> Financial Advisor
+                                </div>
+                                <div class="msg-content" data-i18n="teamfin.greeting">
+                                    Hello Adaline! I'm your Team Fin AI assistant. I can consult our specialists in
+                                    budgeting, savings, and investments to help you. What's on your mind today?
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chat-input-wrapper">
+                            <div class="input-actions">
+                                <button class="tool-btn"><i class="ph ph-paperclip"></i></button>
+                                <button class="tool-btn"><i class="ph ph-microphone"></i></button>
+                            </div>
+                            <input type="text" id="chat-input" data-i18n-placeholder="teamfin.placeholder"
+                                placeholder="Ask about budgeting, investments, or savings...">
+                            <button id="send-btn" class="primary-btn"><i class="ph ph-paper-plane-right"></i></button>
+                        </div>
+                    </div>
+
+                    <aside class="ai-side-panel">
+                        <div class="panel-section">
+                            <h4><i class="ph ph-link"></i> <span data-i18n="teamfin.sources">Sources</span></h4>
+                            <div id="sources-list" class="sources-list">
+                                <p class="empty-text" data-i18n="teamfin.nosources">No sources yet</p>
+                            </div>
+                        </div>
+                        <div class="panel-section">
+                            <h4><i class="ph ph-users"></i> <span data-i18n="teamfin.agents">Active Agents</span></h4>
+                            <div class="agent-pills">
+                                <div class="agent-pill active">Supervisor</div>
+                                <div class="agent-pill">Budgeting</div>
+                                <div class="agent-pill">Savings</div>
+                                <div class="agent-pill">Investment</div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+
+            <!-- AI Avatar View -->
+            <div id="avatar-view" class="view-content {{ 'active' if active_view == 'avatar' else '' }}">
+                <section class="content-header">
+                    <div class="title-group">
+                        <h1>Personal AI Financial Coach</h1>
+                        <p>Interact with your life-like financial guide for personalized advice</p>
+                    </div>
+                </section>
+
+                <div class="avatar-container">
+                    <div class="avatar-card">
+                        <div class="avatar-placeholder">
+                            <iframe src="https://lab.anam.ai/frame/94c913f3-a71f-4694-a643-583856a32f0a" width="100%"
+                                height="100%" allow="microphone" style="border: none;" id="anam-iframe"></iframe>
+                            <div class="screen-overlay"></div>
+                        </div>
+                        <div class="avatar-controls">
+                            <div class="avatar-info-main">
+                                <div class="avatar-status">
+                                    <span class="pulse-dot green"></span>
+                                    <span>AI Coach Online</span>
+                                </div>
+                                <h3>Financial Guide</h3>
+                                <p>Speak naturally to get help with your financial journey</p>
+                            </div>
+                            <div class="avatar-action-hints">
+                                <div class="hint-pill"><i class="ph ph-microphone"></i> Listening</div>
+                                <div class="hint-pill"><i class="ph ph-brain"></i> Adaptive AI</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="avatar-side">
+                        <div class="info-card premium-card">
+                            <h4><i class="ph ph-sparkle"></i> Pro Insights</h4>
+                            <p>Unlock deeper financial analysis with our AI Expert.</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>How to use</h4>
+                            <ul>
+                                <li><i class="ph ph-microphone"></i> Click "Join Agent" to start</li>
+                                <li><i class="ph ph-chats"></i> Ask about specific goals</li>
+                                <li><i class="ph ph-lightning"></i> Get instant visual feedback</li>
+                            </ul>
+                        </div>
+                        <div class="info-card special">
+                            <div class="card-bg-glow"></div>
+                            <h4>Special Offer</h4>
+                            <p>Premium users get 24/7 priority access to specialized avatars.</p>
+                            <button class="special-btn">Upgrade Now</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stock Analyzer View -->
+            <div id="stock-analyzer-view"
+                class="view-content {{ 'active' if active_view == 'stock-analyzer' else '' }}">
+                <section class="content-header">
+                    <div class="title-group">
+                        <h1 data-i18n="stock.title">Stock Analyzer</h1>
+                        <p data-i18n="stock.subtitle">Real-time insights and AI-driven stock recommendations</p>
+                    </div>
+                </section>
+
+                <div class="card" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div style="flex: 2;">
+                            <label
+                                style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Select
+                                Predefined Asset</label>
+                            <select id="stock-dropdown"
+                                style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size:14px; background: white;">
+                                <option value="">-- Select Stock --</option>
+                                <optgroup label="Popular Stocks">
+                                    <option value="AAPL">AAPL - Apple Inc.</option>
+                                    <option value="MSFT">MSFT - Microsoft Corp.</option>
+                                    <option value="GOOGL">GOOGL - Alphabet Inc.</option>
+                                    <option value="TSLA">TSLA - Tesla Inc.</option>
+                                    <option value="NVDA">NVDA - NVIDIA Corp.</option>
+                                    <option value="AMZN">AMZN - Amazon.com Inc.</option>
+                                    <option value="META">META - Meta Platforms</option>
+                                </optgroup>
+                                <optgroup label="Commodities">
+                                    <option value="COMM:GOLD">GOLD - Gold</option>
+                                    <option value="COMM:SILVER">SILVER - Silver</option>
+                                    <option value="COMM:WTI">WTI - Crude Oil</option>
+                                    <option value="COMM:NATURAL_GAS">NATURAL GAS</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div style="flex: 1; display:flex; flex-direction:column;">
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Or
+                                Search Ticker</label>
+                            <input type="text" id="stock-ticker-input" placeholder="e.g. BTC"
+                                style="width:100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size:14px; box-sizing: border-box;">
+                        </div>
+                        <div style="height: 100%; display: flex; align-items: flex-end; padding-bottom: 4px;">
+                            <button id="fetch-stock-btn" class="primary-btn" style="padding: 12px 20px;"><i
+                                    class="ph ph-magnifying-glass"></i> Analyze</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="stock-chart-container" class="card" style="display:none; margin-bottom: 24px; height: 350px;">
+                    <h3 id="chart-title" style="margin-bottom: 16px; font-size: 16px;">Market Trend (Last 30 Days)</h3>
+                    <div style="height: calc(100% - 40px);">
+                        <canvas id="stockHistoryChart"></canvas>
+                    </div>
+                </div>
+
+                <div id="stock-data-display" style="display:none; gap: 20px; flex-wrap: wrap; margin-bottom: 24px;">
+                    <div class="card" style="flex: 1 1 30%;">
+                        <h3 style="color:var(--text-muted); font-size:14px; margin-bottom:8px;">Current Price</h3>
+                        <div id="stock-price" style="font-size: 24px; font-weight:700;">-</div>
+                    </div>
+                    <div class="card" style="flex: 1 1 30%;">
+                        <h3 style="color:var(--text-muted); font-size:14px; margin-bottom:8px;">Change</h3>
+                        <div id="stock-change" style="font-size: 24px; font-weight:700;">-</div>
+                        <div id="stock-change-percent" style="font-size: 14px;">-</div>
+                    </div>
+                    <div class="card" style="flex: 1 1 30%;">
+                        <h3 style="color:var(--text-muted); font-size:14px; margin-bottom:8px;">Volume</h3>
+                        <div id="stock-volume" style="font-size: 24px; font-weight:700;">-</div>
+                    </div>
+                </div>
+
+                <div id="stock-analysis-result" style="display:none; padding: 24px; margin-top: 24px;" class="card">
+                    <h3 style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;"><i class="ph ph-sparkle"
+                            style="color: var(--accent-purple);"></i> AI Analysis & Recommendation</h3>
+                    <div id="stock-analysis-content" style="line-height: 1.6;"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Shopping Assistant Modal -->
+    <div id="shopping-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content shopping-chat-modal-premium">
+            <!-- Sidebar for Chat History -->
+            <aside class="shopping-sidebar">
+                <div class="shopping-sidebar-header">
+                    <h2 class="chat-title-sidebar">CHAT A.I.<span>+</span></h2>
+                    <div class="sidebar-top-actions">
+                        <button class="new-chat-btn" id="new-shopping-chat"><i class="ph ph-plus"></i> New chat</button>
+                        <button class="search-chat-btn"><i class="ph ph-magnifying-glass"></i></button>
+                    </div>
+                </div>
+
+                <div class="conversations-list-container">
+                    <div class="list-label">Your conversations <span class="clear-all">Clear All</span></div>
+                    <ul class="conversations-list">
+                        <li class="active-chat"><i class="ph ph-chat-circle"></i> <span>Shopping Savings Plan...</span>
+                        </li>
+                        <li><i class="ph ph-chat-circle"></i> <span>iPhone 15 Price Analys...</span></li>
+                        <li><i class="ph ph-chat-circle"></i> <span>Best Budget Laptops 2024</span></li>
+                    </ul>
+
+                    <div class="list-label">Last 7 Days</div>
+                    <ul class="conversations-list">
+                        <li><i class="ph ph-chat-circle"></i> <span>Real Estate Trends</span></li>
+                        <li><i class="ph ph-chat-circle"></i> <span>Gold Price Forecast</span></li>
+                    </ul>
+                </div>
+
+                <div class="shopping-sidebar-footer">
+                    <div class="sidebar-footer-item">
+                        <i class="ph ph-gear"></i> <span>Settings</span>
+                    </div>
+                    <div class="user-profile-sidebar">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Adaline" alt="User">
+                        <div class="user-info-sidebar">
+                            <span class="user-name-sidebar">Adaline Lively</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Chat Area -->
+            <div class="shopping-main-chat">
+                <div class="shopping-chat-header-premium">
+                    <div class="chat-header-info">
+                        <span class="online-indicator"><span class="pulse-dot"></span> Online</span>
+                    </div>
+                    <div class="chat-header-actions">
+                        <button id="close-shopping-modal" class="close-premium-btn"><i class="ph ph-x"></i></button>
+                    </div>
+                </div>
+
+                <div id="shopping-chat-body" class="shopping-chat-body-premium">
+                    <!-- AI Message -->
+                    <div class="chat-message ai">
+                        <div class="message-meta-premium">
+                            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=ShoppingBot" alt="AI Agent"
+                                class="chat-avatar-premium">
+                            <span class="agent-name-premium">CHAT A.I.+</span>
+                        </div>
+                        <div class="bubble-premium">
+                            Hello! I'm your Smart Shopping Assistant. I can help you analyze if a purchase fits your
+                            budget and provide market insights. What are you looking to buy today?
+                        </div>
+                    </div>
+                </div>
+
+                <div class="shopping-chat-footer-premium">
+                    <div class="chat-input-wrapper-premium">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Adaline" alt="User"
+                            class="user-avatar-input">
+                        <input type="text" id="shopping-query" placeholder="What's in your mind?">
+                        <button id="analyze-shopping-btn" class="send-premium-btn">
+                            <i class="ph ph-paper-plane-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="upgrade-pro-badge">
+                <i class="ph ph-star-fill"></i> Upgrade to Pro
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Analytics Chatbot FAB -->
+    <div id="chatbot-fab" class="chatbot-fab">
+        <div id="chatbot-lottie" style="width:76px;height:76px;"></div>
+    </div>
+
+    <!-- Analytics Chatbot Modal -->
+    <div id="chatbot-modal" class="chatbot-modal">
+        <div class="chatbot-header">
+            <div class="chatbot-header-left">
+                <div class="bot-avatar-header">
+                    <i class="ph ph-robot"></i>
+                </div>
+                <div class="bot-info">
+                    <h4>LeadBot</h4>
+                    <span class="status-online"><span class="dot"></span> Online Now</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="clear-chat-btn" title="Options"><i class="ph ph-dots-three"></i></button>
+                <button id="close-chat-btn"><i class="ph ph-x"></i></button>
+            </div>
+        </div>
+        <div id="chatbot-body" class="chatbot-body">
+            <!-- Bot Message Example -->
+            <div class="message-wrapper bot">
+                <div class="message-avatar">
+                    <i class="ph ph-robot"></i>
+                </div>
+                <div class="message-content">
+                    <span class="sender-name">LeadBot</span>
+                    <div class="bubble">
+                        Hello! I'm ArthSaathi, your personal investment assistant. What's on your mind?
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="chatbot-footer">
+            <div class="input-row">
+                <button id="chatbot-mic-btn" title="Click to speak"><i class="ph ph-microphone"></i></button>
+                <input type="text" id="chatbot-input" placeholder="Reply to LeadBot...">
+                <button id="chatbot-send-btn" title="Send"><i class="ph ph-paper-plane-right"></i></button>
+            </div>
+            <div class="footer-branding">
+                <span>We're <i class="ph ph-lightning"></i> by ArthSaathi</span>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="{{ url_for('static', path='js/main.js') }}"></script>
+    <script>
+        // Load Lottie bot animation for chatbot FAB
+        const _lottieFab = document.getElementById('chatbot-lottie');
+        if (_lottieFab && typeof lottie !== 'undefined') {
+            lottie.loadAnimation({
+                container: _lottieFab,
+                renderer: 'svg',
+                loop: true,
+                autoplay: true,
+                path: '{{ url_for("static", path="chatbot.json") }}'
+            });
+        }
+    </script>
+    <script type="text/javascript">
+        function googleTranslateElementInit() {
+            new google.translate.TranslateElement({ pageLanguage: 'en' }, 'google_translate_element');
+        }
+    </script>
+    <script type="text/javascript"
+        src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</body>
+
+
+</html>

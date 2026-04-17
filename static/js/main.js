@@ -5,7 +5,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setupChat();
     setupAnalyticsChatbot();
     setupDashboard();
+    setupStockAnalyzer();
+    setupShoppingAssistant();
 });
+
 
 
 function setupNavigation() {
@@ -22,7 +25,7 @@ function setupNavigation() {
             if (!targetEl) return;
 
             // Update URL without reload (optional but good for SPA)
-            const url = targetView === 'analytics' ? '/' : `/${targetView}`;
+            const url = targetView === 'dashboard' ? '/dashboard' : `/dashboard?view=${targetView}`;
             window.history.pushState({view: targetView}, '', url);
 
             // Update Nav UI
@@ -283,22 +286,137 @@ function renderStatsChart(categories) {
     if (!ctx) return;
     if (stsChart) stsChart.destroy();
 
+    if (!categories || categories.length === 0) return;
+
+    const total = categories.reduce((s, c) => s + c.value, 0);
+
+    // Animate the center value as a counter
+    const centerVal = document.querySelector('.donut-center .value');
+    if (centerVal) {
+        animateCounter(centerVal, 0, total, 900, (v) => `$${Math.round(v).toLocaleString()}`);
+    }
+
+    // Build rich legend rows
+    const donutLegend = document.getElementById('donut-legend');
+    if (donutLegend) {
+        donutLegend.innerHTML = '';
+        categories.forEach((cat, i) => {
+            const pct = total > 0 ? ((cat.value / total) * 100).toFixed(1) : 0;
+            const row = document.createElement('div');
+            row.className = 'legend-row';
+            row.dataset.index = i;
+            row.innerHTML = `
+                <div class="legend-color-pill" style="background:${cat.color};"></div>
+                <div class="legend-row-info">
+                    <div class="legend-row-top">
+                        <span class="legend-cat-name">${cat.name}</span>
+                        <div class="legend-cat-meta">
+                            <span class="legend-cat-value">$${cat.value.toLocaleString()}</span>
+                            <span class="legend-cat-pct">${pct}%</span>
+                        </div>
+                    </div>
+                    <div class="legend-mini-bar">
+                        <div class="legend-mini-bar-fill" style="background:${cat.color};" data-width="${pct}"></div>
+                    </div>
+                </div>
+            `;
+
+            // Hover: highlight chart segment
+            row.addEventListener('mouseenter', () => {
+                if (!stsChart) return;
+                stsChart.setDatasetVisibility(0, true);
+                stsChart.data.datasets[0].hoverOffset = 12;
+                stsChart.tooltip.setActiveElements([{datasetIndex: 0, index: i}], {x: 0, y: 0});
+                stsChart.update();
+                document.querySelectorAll('.legend-row').forEach((r, ri) => {
+                    r.style.opacity = ri === i ? '1' : '0.55';
+                });
+            });
+            row.addEventListener('mouseleave', () => {
+                if (!stsChart) return;
+                stsChart.tooltip.setActiveElements([], {});
+                stsChart.update();
+                document.querySelectorAll('.legend-row').forEach(r => r.style.opacity = '1');
+            });
+
+            donutLegend.appendChild(row);
+        });
+
+        // Animate mini bars in after a short delay
+        setTimeout(() => {
+            donutLegend.querySelectorAll('.legend-mini-bar-fill').forEach(fill => {
+                fill.style.width = fill.dataset.width + '%';
+            });
+        }, 200);
+    }
+
     stsChart = new Chart(ctx.getContext('2d'), {
         type: 'doughnut',
         data: {
+            labels: categories.map(c => c.name),
             datasets: [{
                 data: categories.map(c => c.value),
                 backgroundColor: categories.map(c => c.color),
-                borderWidth: 0,
-                cutout: '75%'
+                hoverBackgroundColor: categories.map(c => c.color),
+                borderWidth: 3,
+                borderColor: '#ffffff',
+                hoverBorderColor: '#ffffff',
+                hoverBorderWidth: 3,
+                hoverOffset: 12,
+                cutout: '72%'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
+            animation: {
+                animateRotate: true,
+                animateScale: true,
+                duration: 900,
+                easing: 'easeInOutQuart'
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const val = ctx.parsed;
+                            const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                            return `  $${val.toLocaleString()} (${pct}%)`;
+                        }
+                    },
+                    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                    titleFont: { size: 13, weight: '700' },
+                    bodyFont: { size: 12 },
+                    padding: 12,
+                    cornerRadius: 10,
+                    caretSize: 6
+                }
+            },
+            onHover: (event, activeElements) => {
+                const rows = document.querySelectorAll('.legend-row');
+                if (activeElements.length > 0) {
+                    const idx = activeElements[0].index;
+                    rows.forEach((r, i) => r.style.opacity = i === idx ? '1' : '0.55');
+                } else {
+                    rows.forEach(r => r.style.opacity = '1');
+                }
+            }
         }
     });
+}
+
+function animateCounter(el, from, to, duration, formatter) {
+    const start = performance.now();
+    const update = (now) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = from + (to - from) * eased;
+        el.textContent = formatter(current);
+        if (progress < 1) requestAnimationFrame(update);
+    };
+    requestAnimationFrame(update);
 }
 
 function renderComparisonChart(data) {
@@ -659,13 +777,8 @@ function setupDashboard() {
             donutCenterVal.textContent = `$${(stats.expense?.current || 0).toLocaleString()}`;
         }
         
-        // Update Donut Legend
-        const donutLegend = document.getElementById('donut-legend');
-        if (donutLegend && stats.expense?.categories) {
-            donutLegend.innerHTML = stats.expense.categories.map(c => 
-                `<div class="legend-item"><span class="dot" style="background-color: ${c.color};"></span> ${c.name} - $${c.value.toLocaleString()}</div>`
-            ).join('');
-        }
+        // Update Donut Legend - rendered by renderStatsChart, just trigger re-render
+        // (renderStatsChart already handles the rich legend row building)
         
         // Update small stat trends if desired (Optional: setting standard texts after parsed data)
         document.querySelectorAll('.card-footer p').forEach(el => el.innerHTML = 'Based on parsed AI extraction');
@@ -748,5 +861,284 @@ function setupDashboard() {
             processData(formData);
         });
     }
+}
+
+function setupStockAnalyzer() {
+    const fetchBtn = document.getElementById('fetch-stock-btn');
+    const analyzeBtn = document.getElementById('analyze-stock-btn');
+    const tickerInput = document.getElementById('stock-ticker-input');
+    const dropdown = document.getElementById('stock-dropdown');
+    const dataDisplay = document.getElementById('stock-data-display');
+    const actionSection = document.getElementById('stock-action-section');
+    const analysisResult = document.getElementById('stock-analysis-result');
+    const analysisContent = document.getElementById('stock-analysis-content');
+    const chartContainer = document.getElementById('stock-chart-container');
+    const chartTitle = document.getElementById('chart-title');
+
+    let historyChart;
+
+    if (!fetchBtn) return;
+
+    dropdown.addEventListener('change', () => {
+        if (dropdown.value) {
+            tickerInput.value = '';
+        }
+    });
+
+    tickerInput.addEventListener('input', () => {
+        if (tickerInput.value) {
+            dropdown.value = '';
+        }
+    });
+
+    const renderHistoryChart = (labels, values, assetName) => {
+        const ctx = document.getElementById('stockHistoryChart');
+        if (!ctx) return;
+        if (historyChart) historyChart.destroy();
+        
+        chartContainer.style.display = 'block';
+        chartTitle.textContent = `${assetName} - Price Trend (Last 30 Days)`;
+
+        historyChart = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price',
+                    data: values,
+                    borderColor: '#4F46E5',
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(0,0,0,0.05)' } }
+                }
+            }
+        });
+    };
+
+    fetchBtn.addEventListener('click', async () => {
+        let symbol = dropdown.value || tickerInput.value.trim().toUpperCase();
+        if (!symbol) return alert('Please select an asset or enter a ticker');
+
+        fetchBtn.disabled = true;
+        fetchBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Fetching...';
+        
+        const isCommodity = symbol.startsWith('COMM:');
+        const cleanSymbol = isCommodity ? symbol.replace('COMM:', '') : symbol;
+
+        try {
+            if (isCommodity) {
+                // Fetch Commodity
+                const resp = await fetch(`/api/commodity/${cleanSymbol}`);
+                const data = await resp.json();
+                if (data.error) throw new Error(data.error);
+
+                document.getElementById('stock-price').textContent = `${data.price} ${data.unit}`;
+                document.getElementById('stock-change').textContent = '-';
+                document.getElementById('stock-change-percent').textContent = data.name;
+                document.getElementById('stock-volume').textContent = 'N/A';
+
+                renderHistoryChart(data.labels, data.values, data.name);
+            } else {
+                // Fetch Stock Quote
+                const resp = await fetch(`/api/stock/${cleanSymbol}`);
+                if (!resp.ok) throw new Error('Stock data not found');
+                const quote = await resp.json();
+
+                document.getElementById('stock-price').textContent = `$${parseFloat(quote.price).toFixed(2)}`;
+                const change = parseFloat(quote.change);
+                const changeEl = document.getElementById('stock-change');
+                changeEl.textContent = `${change >= 0 ? '+' : ''}$${change.toFixed(2)}`;
+                changeEl.style.color = change >= 0 ? '#10B981' : '#EF4444';
+                
+                const pctEl = document.getElementById('stock-change-percent');
+                pctEl.textContent = quote.change_percent;
+                pctEl.style.color = change >= 0 ? '#10B981' : '#EF4444';
+                
+                document.getElementById('stock-volume').textContent = parseInt(quote.volume).toLocaleString();
+
+                // Fetch Stock History
+                const histResp = await fetch(`/api/stock/history/${cleanSymbol}`);
+                const histData = await histResp.json();
+                renderHistoryChart(histData.labels, histData.values, cleanSymbol);
+            }
+
+            dataDisplay.style.display = 'flex';
+            actionSection.style.display = 'block';
+            analysisResult.style.display = 'none';
+            
+        } catch (e) {
+            alert('Error fetching data: ' + e.message);
+        } finally {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = '<i class="ph ph-magnifying-glass"></i> Analyze';
+        }
+    });
+
+    analyzeBtn.addEventListener('click', async () => {
+        let symbol = dropdown.value || tickerInput.value.trim().toUpperCase();
+        if (!symbol) return;
+        
+        const cleanSymbol = symbol.startsWith('COMM:') ? symbol.replace('COMM:', '') : symbol;
+
+        analyzeBtn.disabled = true;
+        analyzeBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Generating Report...';
+        analysisResult.style.display = 'none';
+
+        try {
+            const resp = await fetch('/api/stock/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: cleanSymbol })
+            });
+            if (!resp.ok) throw new Error('Analysis failed');
+            const data = await resp.json();
+
+            const parseMarkdown = (text) => {
+                return text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\n/g, '<br>')
+                    .replace(/\* (.*?)<br>/g, '<li>$1</li>')
+                    .replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+            };
+
+            analysisContent.innerHTML = parseMarkdown(data.analysis);
+            analysisResult.style.display = 'block';
+            analysisResult.scrollIntoView({ behavior: 'smooth' });
+        } catch (e) {
+            alert('Error generating report: ' + e.message);
+        } finally {
+            analyzeBtn.disabled = false;
+            analyzeBtn.innerHTML = '<i class="ph ph-magic-wand"></i> Get AI Recommendation';
+        }
+    });
+}
+
+function setupShoppingAssistant() {
+    const triggers = [
+        document.getElementById('shopping-assistant-trigger'),
+        document.getElementById('budget-assistant-trigger')
+    ];
+    const modal = document.getElementById('shopping-modal');
+    const closeBtn = document.getElementById('close-shopping-modal');
+    const sendBtn = document.getElementById('analyze-shopping-btn');
+    const input = document.getElementById('shopping-query');
+    const chatBody = document.getElementById('shopping-chat-body');
+
+    const newChatBtn = document.getElementById('new-shopping-chat');
+
+    if (!modal) return;
+
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', () => {
+            chatBody.innerHTML = `
+                <div class="chat-message ai">
+                    <div class="message-meta-premium">
+                        <img src="https://api.dicebear.com/7.x/bottts/svg?seed=ShoppingBot" alt="AI Agent" class="chat-avatar-premium">
+                        <span class="agent-name-premium">CHAT A.I.+</span>
+                    </div>
+                    <div class="bubble-premium">
+                        Hello! I'm your Smart Shopping Assistant. I can help you analyze if a purchase fits your budget and provide market insights. What are you looking to buy today?
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    triggers.forEach(trigger => {
+        if (trigger) {
+            trigger.addEventListener('click', (e) => {
+                e.preventDefault();
+                modal.style.display = 'flex';
+                input.focus();
+            });
+        }
+    });
+
+    closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+    });
+
+    const appendMessage = (text, type) => {
+        const msg = document.createElement('div');
+        msg.className = `chat-message ${type}`;
+        
+        const avatar = type === 'ai' 
+            ? 'https://api.dicebear.com/7.x/bottts/svg?seed=ShoppingBot' 
+            : 'https://api.dicebear.com/7.x/avataaars/svg?seed=Adaline';
+        
+        const name = type === 'ai' ? 'CHAT A.I.+' : 'You';
+        
+        msg.innerHTML = `
+            <div class="message-meta-premium">
+                <img src="${avatar}" alt="${name}" class="chat-avatar-premium">
+                <span class="agent-name-premium">${name}</span>
+            </div>
+            <div class="bubble-premium">${text}</div>
+        `;
+        
+        chatBody.appendChild(msg);
+        chatBody.scrollTop = chatBody.scrollHeight;
+    };
+
+    const handleAction = async () => {
+        const query = input.value.trim();
+        if (!query) return;
+
+        input.value = '';
+        appendMessage(query, 'user');
+
+        // Add loading state
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-message ai loading';
+        loadingDiv.innerHTML = `
+            <div class="message-meta-premium">
+                <img src="https://api.dicebear.com/7.x/bottts/svg?seed=ShoppingBot" alt="AI Agent" class="chat-avatar-premium">
+                <span class="agent-name-premium">Thinking...</span>
+            </div>
+            <div class="bubble-premium">...</div>
+        `;
+        chatBody.appendChild(loadingDiv);
+        chatBody.scrollTop = chatBody.scrollHeight;
+
+        try {
+            const resp = await fetch('/api/shopping/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+            const data = await resp.json();
+            
+            loadingDiv.remove();
+            
+            // Format markdown-like response
+            const formatted = data.analysis
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            
+            appendMessage(formatted, 'ai');
+        } catch (e) {
+            if (loadingDiv) loadingDiv.remove();
+            appendMessage("Sorry, I encountered an error analyzing your request.", 'ai');
+        }
+    };
+
+    if (sendBtn) sendBtn.addEventListener('click', handleAction);
+    if (input) input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleAction();
+    });
 }
 

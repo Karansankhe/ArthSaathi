@@ -10,3 +10,11 @@ httpx
 gunicorn
 tavily-python
 pymupdf4llm
+motor
+pymongo
+faiss-cpu
+pypdf
+groq
+numpy
+faiss-cpu
+pypdf

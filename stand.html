@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebLLM + WebGPU Chatbot</title>
+
+    <style>
+        body {
+            font-family: system-ui, Arial;
+            background: #0b0f19;
+            color: #e5e7eb;
+            display: flex;
+            justify-content: center;
+            padding: 30px;
+        }
+
+        .app {
+            width: 900px;
+            background: #111827;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        h1 {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        select,
+        button,
+        input {
+            padding: 10px;
+            border-radius: 10px;
+            border: none;
+            font-size: 14px;
+        }
+
+        select {
+            flex: 1;
+        }
+
+        button {
+            background: #ff3d6e;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #chat {
+            height: 420px;
+            overflow-y: auto;
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 12px;
+            white-space: pre-wrap;
+            margin-bottom: 10px;
+        }
+
+        .msg {
+            margin: 8px 0;
+        }
+
+        .user {
+            color: #60a5fa;
+        }
+
+        .bot {
+            color: #34d399;
+        }
+
+        .progress {
+            height: 8px;
+            background: #1f2937;
+            border-radius: 999px;
+            overflow: hidden;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .bar {
+            height: 100%;
+            width: 0%;
+            background: #ff3d6e;
+            transition: width 0.2s;
+        }
+
+        .inputRow {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex: 1;
+            background: #1f2937;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <h1>🧠 WebLLM + WebGPU Offline Chatbot</h1>
+
+        <div class="row">
+            <select id="model">
+                <option value="SmolLM2-360M-Instruct-q4f32_1-MLC">SmolLM2 (Fast)</option>
+                <option value="Phi-3.5-mini-instruct-q4f32_1-MLC">Phi-3.5 Mini</option>
+                <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama 3.1 8B</option>
+            </select>
+            <button id="load">Load Model</button>
+        </div>
+
+        <div class="progress" id="progress">
+            <div class="bar" id="bar"></div>
+        </div>
+
+        <div id="chat">Load a model to start chatting...</div>
+
+        <div class="inputRow">
+            <input id="input" placeholder="Type message..." disabled />
+            <button id="send" disabled>Send</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm@0.2.79";
+
+        const chat = document.getElementById("chat");
+        const model = document.getElementById("model");
+        const loadBtn = document.getElementById("load");
+        const input = document.getElementById("input");
+        const sendBtn = document.getElementById("send");
+        const progress = document.getElementById("progress");
+        const bar = document.getElementById("bar");
+
+        let engine = null;
+
+        function addMsg(text, cls) {
+            const div = document.createElement("div");
+            div.className = "msg " + cls;
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function setProgress(p) {
+            progress.style.display = "block";
+            bar.style.width = p + "%";
+        }
+
+        async function loadModel() {
+            if (!navigator.gpu) {
+                alert("WebGPU not supported in this browser");
+                return;
+            }
+
+            loadBtn.disabled = true;
+            chat.textContent = "Loading model...";
+
+            engine = await CreateMLCEngine(model.value, {
+                initProgressCallback: (p) => {
+                    let percent = typeof p === "number" ? p : p.progress;
+                    percent = Math.floor(percent * 100);
+                    setProgress(percent);
+                    chat.textContent = "Loading model... " + percent + "%";
+                }
+            });
+
+            chat.textContent = "";
+            addMsg("Model loaded successfully. Ask anything!", "bot");
+
+            input.disabled = false;
+            sendBtn.disabled = false;
+            loadBtn.disabled = false;
+        }
+
+        async function sendMessage() {
+            const text = input.value.trim();
+            if (!text || !engine) return;
+
+            input.value = "";
+            addMsg("You: " + text, "user");
+
+            const botDiv = document.createElement("div");
+            botDiv.className = "msg bot";
+            chat.appendChild(botDiv);
+
+            const stream = await engine.chat.completions.create({
+                messages: [{ role: "user", content: text }],
+                stream: true
+            });
+
+            let full = "";
+            for await (const chunk of stream) {
+                const token = chunk.choices[0].delta.content || "";
+                full += token;
+                botDiv.textContent = "Bot: " + full;
+                chat.scrollTop = chat.scrollHeight;
+            }
+        }
+
+        loadBtn.onclick = loadModel;
+        sendBtn.onclick = sendMessage;
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
+    </script>
+
+</body>
+
+</html>

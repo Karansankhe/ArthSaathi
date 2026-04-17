@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import requests
 from dotenv import load_dotenv
@@ -18,16 +19,37 @@ tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 MODEL = "openai/gpt-oss-120b"
 
 
+# ================= RESPONSE CLEANER =================
+def clean_response(text: str) -> str:
+    """
+    Strips markdown bold/italic markers (*** and **) from LLM output.
+    Converts markdown-style tables to clean plain-text (kept intact for HTML rendering).
+    """
+    if not text:
+        return text
+    # Remove triple-star bold+italic: ***text***
+    text = re.sub(r'\*{3}(.+?)\*{3}', r'\1', text, flags=re.DOTALL)
+    # Remove double-star bold: **text**
+    text = re.sub(r'\*{2}(.+?)\*{2}', r'\1', text, flags=re.DOTALL)
+    # Remove single-star italic: *text*
+    text = re.sub(r'\*(.+?)\*', r'\1', text, flags=re.DOTALL)
+    # Remove leftover lone stars
+    text = re.sub(r'\*+', '', text)
+    # Clean up excessive blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 # ================= LLM CALL =================
 def call_llm(prompt):
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
-            {"role": "system", "content": "You are ArthSaathi, a financial AI advisor."},
+            {"role": "system", "content": "You are ArthSaathi, a financial AI advisor. Always respond in clean plain text. Do NOT use markdown bold (**) or italic (*) markers. Use plain numbered lists and dashes. Use ASCII tables where tabular data is needed."},
             {"role": "user", "content": prompt}
         ]
     )
-    return response.choices[0].message.content
+    return clean_response(response.choices[0].message.content)
 
 
 # ================= FOLLOWUPS (PROMPT-DRIVEN) =================
