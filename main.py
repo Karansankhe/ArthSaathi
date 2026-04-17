@@ -207,10 +207,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ─────────────────────────────────────────────
+# PATHS & TEMPLATES
+# ─────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+# Verify directories exist to prevent 500 errors
+if not os.path.exists(TEMPLATES_DIR):
+    logger.error(f"❌ Templates directory NOT FOUND: {TEMPLATES_DIR}")
+if not os.path.exists(STATIC_DIR):
+    logger.error(f"❌ Static directory NOT FOUND: {STATIC_DIR}")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.add_middleware(
     CORSMiddleware,
