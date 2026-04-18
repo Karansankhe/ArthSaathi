@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
             display: flex;
@@ -160,30 +161,32 @@
         <div id="login-form">
             <div class="form-group">
                 <label>Email Address</label>
-                <input type="email" placeholder="name@example.com">
+                <input type="email" id="login-email" placeholder="name@example.com">
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input type="password" placeholder="••••••••">
+                <input type="password" id="login-password" placeholder="••••••••">
             </div>
-            <button class="auth-btn" onclick="handleAuth()">Sign In</button>
+            <button class="auth-btn" onclick="handleLogin()">Sign In</button>
         </div>
 
         <div id="signup-form" style="display: none;">
             <div class="form-group">
                 <label>Full Name</label>
-                <input type="text" placeholder="John Doe">
+                <input type="text" id="signup-name" placeholder="John Doe">
             </div>
             <div class="form-group">
                 <label>Email Address</label>
-                <input type="email" placeholder="name@example.com">
+                <input type="email" id="signup-email" placeholder="name@example.com">
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input type="password" placeholder="••••••••">
+                <input type="password" id="signup-password" placeholder="••••••••">
             </div>
-            <button class="auth-btn" onclick="handleAuth()">Create Account</button>
+            <button class="auth-btn" onclick="handleSignup()">Create Account</button>
         </div>
+
+        <p id="auth-error" style="color: red; margin-top: 15px; display: none;"></p>
 
         <div class="social-auth">
             <button class="social-btn">
@@ -198,11 +201,18 @@
     </div>
 
     <script>
+        const supabaseUrl = "{{ supabase_url }}";
+        const supabaseAnonKey = "{{ supabase_anon_key }}";
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+        const authError = document.getElementById('auth-error');
+
         function switchTab(type) {
             const loginForm = document.getElementById('login-form');
             const signupForm = document.getElementById('signup-form');
             const tabs = document.querySelectorAll('.tab');
             const footerText = document.getElementById('footer-text');
+            authError.style.display = 'none';
 
             if (type === 'login') {
                 loginForm.style.display = 'block';
@@ -219,10 +229,74 @@
             }
         }
 
-        function handleAuth() {
-            // Simulate success
-            window.location.href = '/dashboard';
+        async function handleLogin() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            authError.style.display = 'none';
+
+            if (!email || !password) {
+                authError.innerText = "Please enter email and password.";
+                authError.style.display = 'block';
+                return;
+            }
+
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password,
+            });
+
+            if (error) {
+                authError.innerText = error.message;
+                authError.style.display = 'block';
+            } else {
+                // Success! Save session and redirect
+                window.location.href = '/dashboard';
+            }
         }
+
+        async function handleSignup() {
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const fullName = document.getElementById('signup-name').value;
+            authError.style.display = 'none';
+
+            if (!email || !password) {
+                authError.innerText = "Please enter email and password.";
+                authError.style.display = 'block';
+                return;
+            }
+
+            const { data, error } = await supabaseClient.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: {
+                        full_name: fullName
+                    }
+                }
+            });
+
+            if (error) {
+                authError.innerText = error.message;
+                authError.style.display = 'block';
+            } else {
+                authError.innerText = "Check your email for the confirmation link!";
+                authError.style.color = "green";
+                authError.style.display = 'block';
+                if(data?.session) {
+                    window.location.href = '/dashboard';
+                }
+            }
+        }
+
+        // Auto-redirect if already logged in
+        async function checkSession() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) {
+                window.location.href = '/dashboard';
+            }
+        }
+        checkSession();
     </script>
 </body>
 </html>

@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 </head>
@@ -59,7 +60,7 @@
             <div class="sidebar-footer">
                 <ul>
                     <li><a href="#"><i class="ph ph-question"></i> <span data-i18n="nav.help">Help</span></a></li>
-                    <li><a href="/"><i class="ph ph-sign-out"></i> <span data-i18n="nav.logout">Log out</span></a></li>
+                    <li><a href="#" id="logout-btn"><i class="ph ph-sign-out"></i> <span data-i18n="nav.logout">Log out</span></a></li>
                 </ul>
                 <div class="theme-toggle">
                     <button class="active"><i class="ph ph-sun"></i></button>
@@ -723,6 +724,44 @@
 
     <script src="{{ url_for('static', path='js/main.js') }}"></script>
     <script>
+        const supabaseUrl = "{{ supabase_url }}";
+        const supabaseAnonKey = "{{ supabase_anon_key }}";
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+        // Check if user is logged in
+        async function checkSession() {
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
+            if (error || !session) {
+                // Not logged in, redirect to login page
+                window.location.href = '/login';
+                return;
+            }
+
+            // Set user profile details if available
+            const userEmailEl = document.querySelector('.user-email');
+            if (userEmailEl && session.user && session.user.email) {
+                userEmailEl.textContent = session.user.email;
+            }
+            
+            const userNameEl = document.querySelector('.user-name');
+            const userNameSidebarEl = document.querySelector('.user-name-sidebar');
+            if (session.user.user_metadata && session.user.user_metadata.full_name) {
+                if (userNameEl) userNameEl.textContent = session.user.user_metadata.full_name;
+                if (userNameSidebarEl) userNameSidebarEl.textContent = session.user.user_metadata.full_name;
+            } else {
+                if (userNameEl) userNameEl.textContent = "ArthSaathi User";
+                if (userNameSidebarEl) userNameSidebarEl.textContent = "ArthSaathi User";
+            }
+        }
+        checkSession();
+
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            await supabaseClient.auth.signOut();
+            window.location.href = '/login';
+        });
+
         // Load Lottie bot animation for chatbot FAB
         const _lottieFab = document.getElementById('chatbot-lottie');
         if (_lottieFab && typeof lottie !== 'undefined') {
