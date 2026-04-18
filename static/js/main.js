@@ -804,9 +804,21 @@ function setupDashboard() {
     const gamiStatusText = document.getElementById('gami-status-text');
     const gamiExpensesText = document.getElementById('gami-expenses-text');
 
-    // Load Gamification State
-    let userGoal = localStorage.getItem('gamification_goal');
+    // Load Gamification State from Server
+    let userGoal = 0;
     let userScore = parseInt(localStorage.getItem('gamification_score')) || 0;
+
+    const loadGoalFromServer = async () => {
+        try {
+            const resp = await fetch('/api/goals');
+            const data = await resp.json();
+            if (data.goal) {
+                userGoal = data.goal;
+                updateGamificationUI();
+            }
+        } catch(e) { console.error("Goal fetch failed", e); }
+    };
+    loadGoalFromServer();
 
     let currentLottieAnim = null;
     const updateGamificationUI = (expenses = 0) => {
@@ -818,11 +830,11 @@ function setupDashboard() {
 
         // Rank System
         const ranks = [
-            { key: 'gami.rank.bronze', lottie: 'bronze.json', minScore: 0, maxScore: 99, color: '#F59E0B' },
-            { key: 'gami.rank.silver', lottie: 'level1.json', minScore: 100, maxScore: 299, color: '#9CA3AF' },
-            { key: 'gami.rank.gold', lottie: 'level3.json', minScore: 300, maxScore: 599, color: '#FCD34D' },
-            { key: 'gami.rank.platinum', lottie: 'level1.json', minScore: 600, maxScore: 999, color: '#818CF8' },
-            { key: 'gami.rank.diamond', lottie: 'level3.json', minScore: 1000, maxScore: 99999, color: '#C084FC' }
+            { key: 'gami.rank.bronze', lottie: 'Game ranking badges lvl 1.json', minScore: 0, maxScore: 99, color: '#F59E0B' },
+            { key: 'gami.rank.silver', lottie: 'Game ranking badges lvl 3.json', minScore: 100, maxScore: 299, color: '#9CA3AF' },
+            { key: 'gami.rank.gold', lottie: 'Game ranking badges lvl 1.json', minScore: 300, maxScore: 599, color: '#FCD34D' },
+            { key: 'gami.rank.platinum', lottie: 'Game ranking badges lvl 3.json', minScore: 600, maxScore: 999, color: '#818CF8' },
+            { key: 'gami.rank.diamond', lottie: 'Game ranking badges lvl 1.json', minScore: 1000, maxScore: 99999, color: '#C084FC' }
         ];
 
         let currentRank = ranks[0];
@@ -835,7 +847,7 @@ function setupDashboard() {
         }
 
         // Load/Update Lottie Animation for Badge
-        const lottiePath = `/static/lottie/${currentRank.lottie}`;
+        const lottiePath = `/static/assets/${currentRank.lottie}`;
         if (badgeDisplay.getAttribute('data-current-lottie') !== lottiePath) {
             if (currentLottieAnim) {
                 currentLottieAnim.destroy();
@@ -892,17 +904,68 @@ function setupDashboard() {
 
     updateGamificationUI();
 
+    // Share Badge logic
+    const shareBtn = document.getElementById('share-badge-btn');
+    if (shareBtn) {
+        shareBtn.onclick = () => {
+            const rankName = rankDisplay ? rankDisplay.textContent : 'a new level';
+            const text = `I just reached ${rankName} on ArthSaathi! 🏆 My financial score is ${userScore} points. Join me on the path to financial freedom! #ArthSaathi #FinTech #AI`;
+            const url = window.location.origin;
+            if (navigator.share) {
+                navigator.share({
+                    title: 'My ArthSaathi Achievement',
+                    text: text,
+                    url: url
+                }).catch(() => {
+                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text + " " + url)}`);
+                });
+            } else {
+                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text + " " + url)}`);
+            }
+        };
+    }
+
+    // Offer Timer logic
+    const startOfferTimer = () => {
+        const timerEl = document.getElementById('offer-timer');
+        if (!timerEl) return;
+
+        let totalSeconds = 24 * 60 * 60;
+        const interval = setInterval(() => {
+            totalSeconds--;
+            if (totalSeconds <= 0) {
+                clearInterval(interval);
+                timerEl.textContent = "00:00:00";
+                return;
+            }
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            timerEl.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }, 1000);
+    };
+    startOfferTimer();
+
     if (setGoalBtn) {
-        setGoalBtn.addEventListener('click', () => {
+        setGoalBtn.addEventListener('click', async () => {
             const val = goalInput.value.trim();
             if(!val || isNaN(val)) {
                 alert("Please enter a valid numeric goal.");
                 return;
             }
             userGoal = val;
-            localStorage.setItem('gamification_goal', val);
+            
+            // Save to Backend
+            try {
+                await fetch('/api/goals', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ goal: parseFloat(val) })
+                });
+            } catch(e) { console.error("Failed to save goal to server", e); }
+
             goalInput.value = '';
-            alert("Goal set successfully!");
+            alert("Goal set successfully and synced with DB!");
             updateGamificationUI();
         });
     }
@@ -914,9 +977,13 @@ function setupDashboard() {
         renderStatsChart(stats.expense?.categories || []);
         renderComparisonChart(stats.budget_vs_expense);
         
-        document.querySelector('.card:nth-child(1) .card-value').textContent = `$${(stats.balance?.current || 0).toLocaleString()}`;
-        document.querySelector('.card:nth-child(2) .card-value').textContent = `$${(stats.income?.current || 0).toLocaleString()}`;
-        document.querySelector('.card:nth-child(3) .card-value').textContent = `$${(stats.expense?.current || 0).toLocaleString()}`;
+        const balVal = document.getElementById('analytics-balance-val');
+        const incVal = document.getElementById('analytics-income-val');
+        const expVal = document.getElementById('analytics-expense-val');
+
+        if(balVal) balVal.textContent = `$${(stats.balance?.current || 0).toLocaleString()}`;
+        if(incVal) incVal.textContent = `$${(stats.income?.current || 0).toLocaleString()}`;
+        if(expVal) expVal.textContent = `$${(stats.expense?.current || 0).toLocaleString()}`;
         
         // Update Donut Center
         const donutCenterVal = document.querySelector('.donut-center .value');
@@ -952,6 +1019,9 @@ function setupDashboard() {
             if(data.stats) {
                 updateStatsDOM(data.stats);
                 const expenseNum = data.stats.expense?.current || 0;
+                
+                // Use goal from server if returned
+                if (data.current_goal) userGoal = data.current_goal;
 
                 // Gamification Cross-Verification
                 if (userGoal) {
@@ -968,10 +1038,47 @@ function setupDashboard() {
                     alert("Data parsed successfully! You can set a monthly expense goal to earn points and level up!");
                 }
                 
+                // Update AI Results Hub UI
+                const resultsHub = document.getElementById('ai-results-hub');
+                const insightsList = document.getElementById('ai-insights-list');
+                const rawBtn = document.getElementById('view-raw-btn');
+
+                if (resultsHub && insightsList) {
+                    resultsHub.style.display = 'block';
+                    insightsList.innerHTML = `
+                        <li style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <span style="display:block; font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600;">Latest Balance</span>
+                            <span style="font-weight: 700; color: var(--accent-purple);">$${(data.stats.balance?.current || 0).toLocaleString()}</span>
+                        </li>
+                        <li style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <span style="display:block; font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600;">Monthly Income</span>
+                            <span style="font-weight: 700; color: #10B981;">$${(data.stats.income?.current || 0).toLocaleString()}</span>
+                        </li>
+                        <li style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <span style="display:block; font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600;">Total Expense</span>
+                            <span style="font-weight: 700; color: #EF4444;">$${(data.stats.expense?.current || 0).toLocaleString()}</span>
+                        </li>
+                    `;
+                    if(rawBtn) {
+                        rawBtn.onclick = () => {
+                            console.log("Raw Analyzed Data:", data.stats);
+                            alert("Raw data logged to console. In a production environment, this would open a side modal.");
+                        };
+                    }
+                    // Hide ingestion container to show results
+                    const ingestionContainer = document.querySelector('.ingestion-container');
+                    if (ingestionContainer) ingestionContainer.style.display = 'none';
+                    
+                    const contentHeader = document.querySelector('#dashboard-view .content-header');
+                    if (contentHeader) contentHeader.style.display = 'none';
+                }
+
                 updateGamificationUI(expenseNum);
 
                 // Switch to analytics view automatically
-                document.querySelector('.nav-link[data-view="analytics"]').click();
+                if (data-view === 'dashboard') {
+                    document.querySelector('.nav-link[data-view="analytics"]').click();
+                }
             }
         } catch(e) {
             alert("Error parsing data: " + e.message);
@@ -985,9 +1092,15 @@ function setupDashboard() {
         const listDiv = document.getElementById('selected-files-list');
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length > 0) {
-                listDiv.innerHTML = Array.from(fileInput.files).map(f => `<div><i class="ph ph-file-text"></i> ${f.name}</div>`).join('');
+                listDiv.style.display = 'block';
+                const namesUl = document.getElementById('files-names');
+                if (namesUl) {
+                    namesUl.innerHTML = Array.from(fileInput.files)
+                        .map(f => `<li style="display:flex; align-items:center; gap:6px; margin-bottom:2px;"><i class="ph ph-file-text" style="color:var(--accent-purple);"></i> ${f.name}</li>`)
+                        .join('');
+                }
             } else {
-                listDiv.innerHTML = '';
+                listDiv.style.display = 'none';
             }
         });
 
@@ -1008,6 +1121,76 @@ function setupDashboard() {
             processData(formData);
         });
     }
+
+    // Set Goals View Logic
+    const sidebarGoalInput = document.getElementById('sidebar-goal-input');
+    const sidebarGoalBtn = document.getElementById('sidebar-set-goal-btn');
+    const goalTableBody = document.getElementById('goal-table-body');
+    const totalPointsDisplay = document.getElementById('total-points-display');
+    const primaryBadgeContainer = document.getElementById('primary-badge-container');
+    const shareViewBadgeBtn = document.getElementById('share-view-badge-btn');
+
+    const updateGoalsView = () => {
+        if (totalPointsDisplay) totalPointsDisplay.textContent = userScore.toLocaleString();
+        const currentRank = document.getElementById('rank-level-display')?.textContent || "Bronze";
+        const badgeNameLabel = document.getElementById('badge-name-label');
+        if (badgeNameLabel) badgeNameLabel.textContent = currentRank;
+
+        if (goalTableBody && userGoal) {
+            const date = new Date().toLocaleDateString();
+            goalTableBody.innerHTML = `
+                <tr>
+                    <td style="padding: 16px; border-bottom: 1px solid var(--border-color);">${date}</td>
+                    <td style="padding: 16px; border-bottom: 1px solid var(--border-color); font-weight: 700;">$${parseFloat(userGoal).toLocaleString()}</td>
+                    <td style="padding: 16px; border-bottom: 1px solid var(--border-color);"><span style="background: rgba(16, 185, 129, 0.1); color: #10B981; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">ACTIVE</span></td>
+                </tr>
+            `;
+        }
+
+        // Handle Badge Animation in this view
+        if (primaryBadgeContainer) {
+            primaryBadgeContainer.innerHTML = '';
+            // Load current rank lottie from unified assets
+            let lottiePath = `/static/assets/Game ranking badges lvl 1.json`; 
+            if (currentRank.toLowerCase().includes('silver')) {
+                lottiePath = '/static/assets/Game ranking badges lvl 3.json';
+            } else if (currentRank.toLowerCase().includes('diamond')) {
+                lottiePath = '/static/assets/Game ranking badges lvl 1.json';
+            }
+            lottie.loadAnimation({ container: primaryBadgeContainer, renderer: 'svg', loop: true, autoplay: true, path: lottiePath });
+        }
+    };
+
+    if (sidebarGoalBtn) {
+        sidebarGoalBtn.addEventListener('click', async () => {
+            const val = sidebarGoalInput.value.trim();
+            if(!val || isNaN(val)) return alert("Please enter a valid amount.");
+            userGoal = val;
+            try {
+                await fetch('/api/goals', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ goal: parseFloat(val) })
+                });
+                alert("Target updated successfully!");
+                updateGoalsView();
+                updateGamificationUI();
+            } catch(e) { console.error(e); }
+        });
+    }
+
+    if (shareViewBadgeBtn) {
+        shareViewBadgeBtn.addEventListener('click', () => {
+            const rank = document.getElementById('badge-name-label')?.textContent || "User";
+            const shareText = `I just reached the ${rank} rank on ArthSaathi! Managing my finances with AI agents. 🚀 #FinTech #ArthSaathi`;
+            if (navigator.share) {
+                navigator.share({ title: 'ArthSaathi achievement', text: shareText, url: window.location.href });
+            } else {
+                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`);
+            }
+        });
+    }
+    document.querySelector('.nav-link[data-view="set-goals"]')?.addEventListener('click', updateGoalsView);
 }
 
 function setupStockAnalyzer() {

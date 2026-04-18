@@ -21,7 +21,7 @@ else:
 
 tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-MODEL = "llama3-70b-8192"
+MODEL = "openai/gpt-oss-120b"
 
 
 # ================= RESPONSE CLEANER =================

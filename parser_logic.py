@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from chatbot_logic import call_llm
 import google.generativeai as genai
 
@@ -17,7 +18,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         
         if md_text and len(md_text.strip()) > 20: 
             # Basic sanity check to ensure it actually extracted content
-            logger.info("Successfully parsed with pymupdf4llm.")
+            logger.info(f"✅ Successfully extracted {len(md_text)} characters from {file_path} using pymupdf4llm.")
             return md_text
         else:
             logger.warning("pymupdf4llm returned empty or very short text. Possibly scanned image. Falling back to Gemini.")
@@ -38,8 +39,10 @@ def extract_text_from_pdf(file_path: str) -> str:
         model = genai.GenerativeModel("gemini-1.5-flash")
         prompt = "Please accurately extract all the text, numbers, and data tables from this document. Format any tables gracefully."
         
+        logger.info("📡 Sending document to Gemini for multimodal extraction...")
         result = model.generate_content([uploaded_file, prompt])
         text = result.text
+        logger.info(f"✅ Gemini extraction complete. Received {len(text)} characters.")
         
         # Cleanup file from Gemini API storage
         try:
@@ -85,10 +88,11 @@ async def extract_all_data(files, text_data: str) -> str:
         content += text_data + "\n"
         
     return content
-
 async def parse_and_get_stats(files, text_data: str) -> dict:
     """Takes user inputs, extracts text, and runs it through the analyzer LLM to yield dashboard JSON."""
+    logger.info("🚀 [Step 1] Starting overall data extraction from all inputs...")
     content = await extract_all_data(files, text_data)
+    logger.info(f"📄 [Step 1] Extraction complete. Total content size: {len(content)} characters.")
     
     if not content.strip():
         raise ValueError("No data provided or extraction completely failed")
@@ -113,11 +117,21 @@ async def parse_and_get_stats(files, text_data: str) -> dict:
     Text: {content}
     """
     
+    logger.info("🧠 [Step 2] Sending extracted text to LLM for financial structure parsing...")
     try:
         text = call_llm(prompt)
-        # Strip potential markdown blocks
-        text = text.replace("```json", "").replace("```", "").strip()
+        logger.info("✨ [Step 2] AI analysis complete. Parsing JSON response...")
+        
+        # Robust JSON extraction using regex
+        match = re.search(r'(\{.*\})', text, re.DOTALL)
+        if match:
+            text = match.group(1)
+        else:
+            # Fallback to current stripping logic if no clear { } found
+            text = text.replace("```json", "").replace("```", "").strip()
+            
         parsed_json = json.loads(text)
+        logger.info("📊 [Step 3] JSON parsing successful. Data structure ready.")
         return parsed_json
     except Exception as e:
         logger.error(f"Failed to parse data with LLM: {e}")

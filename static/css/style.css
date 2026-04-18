@@ -147,13 +147,6 @@ body {
     padding-top: 24px;
 }
 
-.theme-toggle {
-    display: flex;
-    background-color: #F3F4F6;
-    padding: 4px;
-    border-radius: 20px;
-    margin-top: 24px;
-}
 
 .theme-toggle button {
     flex: 1;
@@ -174,7 +167,7 @@ body {
 /* Main Content Styling */
 .main-content {
     flex: 1;
-    padding: 32px;
+    padding: 24px;
     max-width: 1400px;
     margin: 0 auto;
 }
@@ -349,7 +342,7 @@ body {
 
 .card {
     background: white;
-    padding: 24px;
+    padding: 20px;
     border-radius: 24px;
     border: 1px solid var(--border-color);
 }
@@ -375,7 +368,7 @@ body {
 }
 
 .card-value {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 700;
     margin-bottom: 20px;
 }

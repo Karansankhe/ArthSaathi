@@ -22,14 +22,12 @@ import google.generativeai as genai
 
 load_dotenv()
 
-logger = logging.getLogger("gst-advisor")
-
 # ───────────────── CONFIG ─────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
-MODEL = "llama3-70b-8192"
+MODEL = "openai/gpt-oss-120b"
 EMBED_MODEL = "models/text-embedding-004"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,26 +36,23 @@ GST_PDF_PATH = os.path.join(
     "gst.pdf"
 )
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("gst-advisor")
+
 # ───────────────── INIT CLIENTS ─────────────────
-if not GOOGLE_API_KEY:
-    logger.error("❌ GOOGLE_API_KEY is missing in gst_advisor.py")
-else:
+if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
+else:
+    logger.error("❌ GEMINI_API_KEY is missing in gst_advisor.py")
 
 from groq import Groq
 from tavily import TavilyClient
 
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
+
 if not GROQ_API_KEY:
     logger.error("❌ GROQ_API_KEY is missing in gst_advisor.py")
-    groq_client = None
-else:
-    groq_client = Groq(api_key=GROQ_API_KEY)
-
-if not TAVILY_API_KEY:
-    logger.warning("⚠️ TAVILY_API_KEY is missing in gst_advisor.py. Web search will be disabled.")
-    tavily = None
-else:
-    tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
 # ───────────────── EMBEDDINGS ─────────────────
 DIM = 768
@@ -65,25 +60,33 @@ DIM = 768
 
 def embed(text: str) -> np.ndarray:
     """Gemini embedding"""
-    res = genai.embed_content(
-        model=EMBED_MODEL,
-        content=text,
-        task_type="retrieval_document"
-    )
-    vec = np.array(res["embedding"], dtype="float32")
-    vec = vec / np.linalg.norm(vec)
-    return vec
+    try:
+        res = genai.embed_content(
+            model=EMBED_MODEL,
+            content=text,
+            task_type="retrieval_document"
+        )
+        vec = np.array(res["embedding"], dtype="float32")
+        vec = vec / np.linalg.norm(vec)
+        return vec
+    except Exception as e:
+        logger.error(f"Embedding failed: {e}")
+        return np.zeros(DIM, dtype="float32")
 
 
 def embed_batch(texts):
-    res = genai.embed_content(
-        model=EMBED_MODEL,
-        content=texts,
-        task_type="retrieval_document"
-    )
-    vecs = np.array(res["embedding"], dtype="float32")
-    vecs = vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
-    return vecs
+    try:
+        res = genai.embed_content(
+            model=EMBED_MODEL,
+            content=texts,
+            task_type="retrieval_document"
+        )
+        vecs = np.array(res["embedding"], dtype="float32")
+        vecs = vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
+        return vecs
+    except Exception as e:
+        logger.error(f"Batch embedding failed: {e}")
+        return np.zeros((len(texts), DIM), dtype="float32")
 
 
 # ───────────────── CLEANER ─────────────────
@@ -176,11 +179,14 @@ def ingest_gst_pdf():
     for page in reader.pages:
         text += page.extract_text() or ""
 
-    parents, children, c2p = chunk(text)
-    _store.add_chunks(children, c2p, parents)
+    try:
+        parents, children, c2p = chunk(text)
+        _store.add_chunks(children, c2p, parents)
 
-    _pdf_indexed = True
-    logger.info("Indexing complete")
+        _pdf_indexed = True
+        logger.info("Indexing complete")
+    except Exception as e:
+        logger.error(f"PDF indexing failed: {e}")
 
 
 # ───────────────── WEB SEARCH ─────────────────
@@ -190,8 +196,7 @@ def web_search(q):
         return "\n\n".join(
             f"{r['url']}\n{r['content']}" for r in res["results"]
         )
-    except Exception as e:
-        logger.error(f"Web search failed: {e}")
+    except:
         return ""
 
 
@@ -211,8 +216,7 @@ def route(question):
         ).choices[0].message.content
 
         return json.loads(res)["route"]
-    except Exception as e:
-        logger.error(f"Routing failed: {e}. Falling back to 'both'.")
+    except:
         return "both"
 
 
@@ -249,13 +253,11 @@ practical_guidance, risk_notes, confidence
             temperature=0.2,
             max_tokens=2000
         ).choices[0].message.content
-        
-        logger.info(f"LLM Response received (len: {len(res)})")
+
         return json.loads(res)
 
     except Exception as e:
-        logger.error(f"LLM generation failed: {e}")
-        return {"error": str(e), "message": "Failed to generate structured report", "confidence": 0}
+        return {"error": str(e), "confidence": 0}
 
 
 # ───────────────── MAIN API ─────────────────

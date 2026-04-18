@@ -111,7 +111,6 @@ def build_team() -> Team:
     if not GEMINI_API_KEY:
         raise ValueError("❌ GEMINI_API_KEY is missing")
 
-    # ✅ Stable model - Using Gemini 1.5 Flash for better performance and higher free-tier limits
     gemini = Gemini(
         id="gemini-1.5-flash",
         api_key=GEMINI_API_KEY
@@ -435,21 +434,58 @@ async def parse_data(files: List[UploadFile] = File(None), text_data: str = Form
         parsed_json = await parse_and_get_stats(files, text_data)
         global_stats = parsed_json
         
+        # Fetch current goal for better mapping/response
+        current_goal = 0
+        if db is not None:
+            goal_doc = await db["goals"].find_one(sort=[("timestamp", -1)])
+            if goal_doc:
+                current_goal = goal_doc.get("goal_amount", 0)
+
         # Save to MongoDB
         if collection is not None:
             try:
                 # Ensure we store it with a timestamp
                 data_to_store = parsed_json.copy()
                 data_to_store["timestamp"] = datetime.utcnow()
+                logger.info(f"📊 Attempting to persist data to MongoDB collection: {COLLECTION_NAME}")
                 result = await collection.insert_one(data_to_store)
-                logger.info(f"📊 Financial data persisted to MongoDB. ID: {result.inserted_id}")
+                logger.info(f"✅ SUCCESSFULLY SAVED to DB. ID: {result.inserted_id}")
             except Exception as mongo_err:
-                logger.error(f"❌ MongoDB insert failed: {mongo_err}")
+                logger.error(f"❌ DATABASE PUSH FAILED: {mongo_err}")
+                logger.error(traceback.format_exc())
                 
-        return {"status": "success", "stats": global_stats}
+        return {"status": "success", "stats": global_stats, "current_goal": current_goal}
     except Exception as e:
         logger.error(f"Failed to parse data: {e}")
         raise HTTPException(500, str(e))
+
+@app.post("/api/goals")
+async def save_goal(goal_data: dict):
+    if db is None:
+        raise HTTPException(503, "Database not available")
+    try:
+        goal_amount = goal_data.get("goal")
+        await db["goals"].insert_one({
+            "goal_amount": goal_amount,
+            "timestamp": datetime.utcnow()
+        })
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to save goal: {e}")
+        raise HTTPException(500, str(e))
+
+@app.get("/api/goals")
+async def get_goal():
+    if db is None:
+        return {"goal": 0}
+    try:
+        goal_doc = await db["goals"].find_one(sort=[("timestamp", -1)])
+        if goal_doc:
+            return {"goal": goal_doc.get("goal_amount", 0)}
+        return {"goal": 0}
+    except Exception as e:
+        logger.error(f"Failed to fetch goal: {e}")
+        return {"goal": 0}
 
 
 @app.post("/chat")
