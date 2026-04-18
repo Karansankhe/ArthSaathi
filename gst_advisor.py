@@ -27,7 +27,7 @@ logger = logging.getLogger("gst-advisor")
 # ───────────────── CONFIG ─────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-GOOGLE_API_KEY = os.getenv("GEMINI_API_KEYY")
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
 MODEL = "llama3-70b-8192"
 EMBED_MODEL = "models/text-embedding-004"
