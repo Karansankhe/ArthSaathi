@@ -16,7 +16,7 @@ SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-MODEL = "openai/gpt-oss-120b"
+MODEL = "llama3-70b-8192"
 
 
 # ================= RESPONSE CLEANER =================

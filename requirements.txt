@@ -19,3 +19,4 @@ numpy
 faiss-cpu
 pypdf
 streamlit
+google.generativeai

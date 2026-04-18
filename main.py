@@ -111,7 +111,7 @@ def build_team() -> Team:
 
     # ✅ Stable model - Using Gemini 1.5 Flash for better performance and higher free-tier limits
     gemini = Gemini(
-        id="gemini-2.5-flash",
+        id="gemini-1.5-flash",
         api_key=GEMINI_API_KEY
     )
 
