@@ -510,7 +510,7 @@ async def chat(req: ChatRequest):
 
 @app.get("/api/stock/{symbol}")
 def get_stock_data(symbol: str):
-    AV_API_KEY = "6DSHED5Q11VQ2CCX"
+    AV_API_KEY = os.getenv("AV_API_KEY")
     url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={AV_API_KEY}"
     response = requests.get(url)
     data = response.json()
