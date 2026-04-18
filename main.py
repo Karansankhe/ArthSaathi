@@ -244,6 +244,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    fav_path = os.path.join(os.path.dirname(__file__), "static", "favicon.ico")
+    if os.path.exists(fav_path):
+        return FileResponse(fav_path)
+    return JSONResponse(status_code=204, content={})
+
 # ─────────────────────────────────────────────
 # GLOBAL ERROR HANDLING
 # ─────────────────────────────────────────────
