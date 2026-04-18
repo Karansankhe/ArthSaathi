@@ -13,7 +13,12 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 
-client = Groq(api_key=GROQ_API_KEY)
+if not GROQ_API_KEY:
+    print("⚠️ GROQ_API_KEY is missing in chatbot_logic.py")
+    client = None
+else:
+    client = Groq(api_key=GROQ_API_KEY)
+
 tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 MODEL = "llama3-70b-8192"

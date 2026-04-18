@@ -16,7 +16,6 @@ faiss-cpu
 pypdf
 groq
 numpy
-faiss-cpu
-pypdf
 streamlit
 google.generativeai
+python-multipart
