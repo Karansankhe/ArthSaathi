@@ -46,6 +46,7 @@
                             <span data-i18n="nav.gst">GST Advisor</span></a></li>
                     <li class="{{ 'active' if active_view == 'stock-analyzer' else '' }}"><a href="/dashboard?view=stock-analyzer" class="nav-link" data-view="stock-analyzer"><i class="ph ph-trend-up"></i> <span data-i18n="nav.stock">Stock Analyzer</span></a></li>
                     <li class="{{ 'active' if active_view == 'set-goals' else '' }}"><a href="/dashboard?view=set-goals" class="nav-link" data-view="set-goals"><i class="ph ph-target"></i> <span data-i18n="nav.setgoals">Set Goals</span></a></li>
+                    <li class="{{ 'active' if active_view == 'community' else '' }}"><a href="/dashboard?view=community" class="nav-link" data-view="community"><i class="ph ph-users-three"></i> <span data-i18n="nav.community">Community</span></a></li>
                     <li><a href="/offline" class="offline-mode-link"><i class="ph ph-wifi-slash"></i> <span
                                  data-i18n="nav.offline">Offline Mode</span></a></li>
                 </ul>
@@ -497,12 +498,6 @@
                     </div>
                 </div>
 
-                <div id="stock-chart-container" class="card" style="display:none; margin-bottom: 24px; height: 350px;">
-                    <h3 id="chart-title" style="margin-bottom: 16px; font-size: 16px;">Market Trend (Last 30 Days)</h3>
-                    <div style="height: calc(100% - 40px);">
-                        <canvas id="stockHistoryChart"></canvas>
-                    </div>
-                </div>
 
                 <div id="stock-data-display" style="display:none; gap: 20px; flex-wrap: wrap; margin-bottom: 24px;">
                     <div class="card" style="flex: 1 1 30%;">
@@ -520,10 +515,37 @@
                     </div>
                 </div>
 
+                <div id="stock-action-section" style="display:none; margin-bottom: 24px; text-align: center;">
+                    <button id="analyze-stock-btn" class="primary-btn" style="padding: 14px 40px; font-size: 1.1rem; border-radius: 50px; background: linear-gradient(135deg, var(--accent-purple), #4F46E5); box-shadow: 0 10px 15px -3px rgba(129, 140, 248, 0.3);">
+                        <i class="ph ph-magic-wand"></i> Get AI Recommendation
+                    </button>
+                </div>
+
                 <div id="stock-analysis-result" style="display:none; padding: 24px; margin-top: 24px;" class="card">
                     <h3 style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;"><i class="ph ph-sparkle"
                             style="color: var(--accent-purple);"></i> AI Analysis & Recommendation</h3>
                     <div id="stock-analysis-content" style="line-height: 1.6;"></div>
+                </div>
+
+                <!-- Monthly Performance Insights -->
+                <div id="stock-monthly-performance" style="display:none; margin-top: 32px;">
+                    <h5 style="color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                        <i class="ph ph-calendar-check"></i> Monthly Performance Review
+                    </h5>
+                    <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--border-color);">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+                            <thead style="background: var(--primary-bg);">
+                                <tr>
+                                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">Month</th>
+                                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">Close Price</th>
+                                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">Trend</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stock-monthly-tbody">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -615,7 +637,80 @@
                     <div class="sidebar-top-actions">
                         <button class="new-chat-btn" id="new-shopping-chat"><i class="ph ph-plus"></i> New chat</button>
                         <button class="search-chat-btn"><i class="ph ph-magnifying-glass"></i></button>
+                    <!-- Community View -->
+            <div id="community-view" class="view-content {{ 'active' if active_view == 'community' else '' }}">
+                <section class="content-header" style="margin-bottom: 30px;">
+                    <div class="title-group">
+                        <h1 style="color:var(--accent-purple); font-size: 2.2rem;">ArthSaathi Community Hub</h1>
+                        <p style="color:var(--text-muted);">Connect with other investors across India and discuss regional market trends.</p>
                     </div>
+                </section>
+
+                <div class="community-layout" style="display: grid; grid-template-columns: 1fr 400px; gap: 30px;">
+                    <div class="map-column">
+                        <div class="card" style="padding: 20px; height: 600px; display: flex; flex-direction: column;">
+                            <h3 style="margin-bottom: 16px; display:flex; align-items:center; gap:12px;"><i class="ph ph-map-trifold" style="color:var(--accent-purple);"></i> Regional Financial Activity (India)</h3>
+                            <div style="flex: 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color);">
+                                <!-- Embedded Real Map of India -->
+                                <iframe 
+                                    width="100%" 
+                                    height="100%" 
+                                    frameborder="0" 
+                                    scrolling="no" 
+                                    marginheight="0" 
+                                    marginwidth="0" 
+                                    src="https://www.openstreetmap.org/export/embed.html?bbox=68.11822509765626%2C6.753386000000001%2C97.41241455078126%2C35.513327%26layer=mapnik" 
+                                    style="filter: grayscale(0.2) contrast(1.1);">
+                                </iframe>
+                            </div>
+                        </div>
+                    </div>
+
+                    <aside class="chat-column">
+                        <div class="card" style="padding: 24px; height: 600px; display: flex; flex-direction: column;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="display:flex; align-items:center; gap:10px;"><i class="ph ph-chat-circle-dots" style="color:var(--accent-purple);"></i> Group Discussions</h3>
+                                <div style="width: 40px; height: 40px; background: rgba(129, 140, 248, 0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--accent-purple);">
+                                    <i class="ph ph-users-three" style="font-size: 20px;"></i>
+                                </div>
+                            </div>
+                            
+                            <div style="flex: 1; background: #f8fafc; border-radius: 12px; padding: 16px; overflow-y: auto; border: 1px solid var(--border-color);">
+                                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background: #e2e8f0; flex-shrink: 0;"></div>
+                                    <div style="background: white; padding: 10px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 13px;">
+                                        <p style="font-weight: 700; font-size: 11px; margin-bottom: 4px; color: var(--accent-purple);">Rahul M. (Mumbai)</p>
+                                        Anyone seeing the surge in renewable energy stocks today?
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-direction: row-reverse;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--accent-purple); flex-shrink: 0;"></div>
+                                    <div style="background: var(--accent-purple); color: white; padding: 10px; border-radius: 12px; font-size: 13px;">
+                                        Yes, particularly in the solar sector. Looks promising!
+                                    </div>
+                                </div>
+                                <div style="text-align: center; margin: 20px 0;">
+                                    <span style="background: #e2e8f0; padding: 4px 12px; border-radius: 20px; font-size: 10px; color: #64748b; font-weight: 600;">NEW MESSAGES</span>
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background: #e2e8f0; flex-shrink: 0;"></div>
+                                    <div style="background: white; padding: 10px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 13px;">
+                                        <p style="font-weight: 700; font-size: 11px; margin-bottom: 4px; color: var(--accent-purple);">Priya S. (Bangalore)</p>
+                                        Should I wait for the GST council meeting before investing in textiles?
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 20px; position: relative;">
+                                <input type="text" placeholder="Type a message..." style="width: 100%; padding: 14px 45px 14px 16px; border-radius: 12px; border: 1px solid var(--border-color); background: white; font-size: 14px;">
+                                <button style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--accent-purple); border: none; width: 34px; height: 34px; border-radius: 8px; color: white; cursor: pointer;">
+                                    <i class="ph ph-paper-plane-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
                 </div>
 
                 <div class="conversations-list-container">

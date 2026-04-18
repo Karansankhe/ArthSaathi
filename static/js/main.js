@@ -789,6 +789,9 @@ function setupAnalyticsChatbot() {
 }
 
 function setupDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    if (!dashboardView) return;
+
     const uploadForm = document.getElementById('data-upload-form');
     const manualBtn = document.getElementById('manual-data-submit');
     const statusContainer = document.getElementById('parse-status-container');
@@ -847,6 +850,7 @@ function setupDashboard() {
         }
 
         // Load/Update Lottie Animation for Badge
+        if (!badgeDisplay) return;
         const lottiePath = `/static/assets/${currentRank.lottie}`;
         if (badgeDisplay.getAttribute('data-current-lottie') !== lottiePath) {
             if (currentLottieAnim) {
@@ -1007,7 +1011,7 @@ function setupDashboard() {
     };
 
     const processData = async (formData) => {
-        statusContainer.style.display = 'flex';
+        if (statusContainer) statusContainer.style.display = 'flex';
         try {
             const resp = await fetch('/api/parse-data', {
                 method: 'POST',
@@ -1083,7 +1087,7 @@ function setupDashboard() {
         } catch(e) {
             alert("Error parsing data: " + e.message);
         } finally {
-            statusContainer.style.display = 'none';
+            if (statusContainer) statusContainer.style.display = 'none';
         }
     };
 
@@ -1276,8 +1280,6 @@ function setupStockAnalyzer() {
                 document.getElementById('stock-change').textContent = '-';
                 document.getElementById('stock-change-percent').textContent = data.name;
                 document.getElementById('stock-volume').textContent = 'N/A';
-
-                renderHistoryChart(data.labels, data.values, data.name);
             } else {
                 // Fetch Stock Quote
                 const resp = await fetch(`/api/stock/${cleanSymbol}`);
@@ -1295,15 +1297,38 @@ function setupStockAnalyzer() {
                 pctEl.style.color = change >= 0 ? '#10B981' : '#EF4444';
                 
                 document.getElementById('stock-volume').textContent = parseInt(quote.volume).toLocaleString();
-
-                // Fetch Stock History
-                const histResp = await fetch(`/api/stock/history/${cleanSymbol}`);
-                const histData = await histResp.json();
-                renderHistoryChart(histData.labels, histData.values, cleanSymbol);
             }
 
             dataDisplay.style.display = 'flex';
             actionSection.style.display = 'block';
+            
+            // Populate Monthly Meta Data
+            const monthlyResp = await fetch(`/api/stock/history/monthly/${cleanSymbol}`);
+            const monthlyData = await monthlyResp.json();
+            const monthlyTbody = document.getElementById('stock-monthly-tbody');
+            const monthlySection = document.getElementById('stock-monthly-performance');
+            
+            if (monthlyTbody && monthlyData.labels) {
+                monthlySection.style.display = 'block';
+                monthlyTbody.innerHTML = monthlyData.labels.map((m, i) => {
+                    const price = monthlyData.values[i];
+                    const prevPrice = monthlyData.values[i-1] || price;
+                    const isUp = price >= prevPrice;
+                    return `
+                        <tr>
+                            <td style="padding: 16px; border-bottom: 1px solid var(--border-color); font-weight: 500;">${m}</td>
+                            <td style="padding: 16px; border-bottom: 1px solid var(--border-color); font-weight: 700;">$${price.toLocaleString()}</td>
+                            <td style="padding: 16px; border-bottom: 1px solid var(--border-color);">
+                                <span style="background: ${isUp ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; 
+                                             color: ${isUp ? '#10B981' : '#EF4444'}; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
+                                    <i class="ph ph-trend-${isUp ? 'up' : 'down'}"></i> ${isUp ? 'Gained' : 'Dropped'}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).reverse().join('');
+            }
+            
             analysisResult.style.display = 'none';
             
         } catch (e) {
