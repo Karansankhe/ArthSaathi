@@ -35,7 +35,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         uploaded_file = genai.upload_file(file_path)
         
         # We ensure a capable multimodal model is used for document processing
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         prompt = "Please accurately extract all the text, numbers, and data tables from this document. Format any tables gracefully."
         
         result = model.generate_content([uploaded_file, prompt])

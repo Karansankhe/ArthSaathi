@@ -21,6 +21,8 @@ import requests
 import time
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
+import traceback
+from fastapi.responses import JSONResponse
 
 from agno.agent import Agent
 from agno.team.team import Team
@@ -241,6 +243,58 @@ app = FastAPI(
     version="5.0.0",
     lifespan=lifespan,
 )
+
+# ─────────────────────────────────────────────
+# GLOBAL ERROR HANDLING
+# ─────────────────────────────────────────────
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all exception handler to provide detailed error reports.
+    Helpful for debugging 'Internal Server Error' issues.
+    """
+    error_msg = str(exc)
+    error_traceback = traceback.format_exc()
+    
+    logger.error(f"❌ UNHANDLED EXCEPTION: {request.method} {request.url}")
+    logger.error(f"Error: {error_msg}")
+    logger.error(f"Traceback:\n{error_traceback}")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "type": type(exc).__name__,
+            "message": "Internal Server Error",
+            "detail": error_msg,
+            "traceback": error_traceback.splitlines(), # Split for readability in JSON
+            "path": request.url.path,
+            "method": request.method,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Handle HTTPExceptions to also include more context if it's a 500.
+    """
+    if exc.status_code == 500:
+        logger.error(f"❌ HTTP 500 ERROR: {request.method} {request.url} - {exc.detail}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Detailed Internal Server Error",
+                "detail": exc.detail,
+                "path": request.url.path,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

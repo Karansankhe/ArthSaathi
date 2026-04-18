@@ -22,6 +22,8 @@ import google.generativeai as genai
 
 load_dotenv()
 
+logger = logging.getLogger("gst-advisor")
+
 # ───────────────── CONFIG ─────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
@@ -36,17 +38,26 @@ GST_PDF_PATH = os.path.join(
     "gst.pdf"
 )
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("gst-advisor")
-
 # ───────────────── INIT CLIENTS ─────────────────
-genai.configure(api_key=GOOGLE_API_KEY)
+if not GOOGLE_API_KEY:
+    logger.error("❌ GOOGLE_API_KEY is missing in gst_advisor.py")
+else:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 from groq import Groq
 from tavily import TavilyClient
 
-groq_client = Groq(api_key=GROQ_API_KEY)
-tavily = TavilyClient(api_key=TAVILY_API_KEY)
+if not GROQ_API_KEY:
+    logger.error("❌ GROQ_API_KEY is missing in gst_advisor.py")
+    groq_client = None
+else:
+    groq_client = Groq(api_key=GROQ_API_KEY)
+
+if not TAVILY_API_KEY:
+    logger.warning("⚠️ TAVILY_API_KEY is missing in gst_advisor.py. Web search will be disabled.")
+    tavily = None
+else:
+    tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
 # ───────────────── EMBEDDINGS ─────────────────
 DIM = 768
@@ -179,7 +190,8 @@ def web_search(q):
         return "\n\n".join(
             f"{r['url']}\n{r['content']}" for r in res["results"]
         )
-    except:
+    except Exception as e:
+        logger.error(f"Web search failed: {e}")
         return ""
 
 
@@ -199,7 +211,8 @@ def route(question):
         ).choices[0].message.content
 
         return json.loads(res)["route"]
-    except:
+    except Exception as e:
+        logger.error(f"Routing failed: {e}. Falling back to 'both'.")
         return "both"
 
 
@@ -236,11 +249,13 @@ practical_guidance, risk_notes, confidence
             temperature=0.2,
             max_tokens=2000
         ).choices[0].message.content
-
+        
+        logger.info(f"LLM Response received (len: {len(res)})")
         return json.loads(res)
 
     except Exception as e:
-        return {"error": str(e), "confidence": 0}
+        logger.error(f"LLM generation failed: {e}")
+        return {"error": str(e), "message": "Failed to generate structured report", "confidence": 0}
 
 
 # ───────────────── MAIN API ─────────────────

@@ -17,7 +17,7 @@ MONGODB_URI = os.getenv("MONGODB_URI")
 groq_client = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-MODEL = "openai/gpt-oss-120b"
+MODEL = "llama3-70b-8192"
 
 # ================= RESPONSE CLEANER =================
 def clean_response(text: str) -> str:
