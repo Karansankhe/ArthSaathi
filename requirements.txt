@@ -4,8 +4,8 @@ pydantic
 python-dotenv
 requests
 agno
-jinja2
-google-genai
+jinja2>=3.1.0
+google-generativeai
 httpx
 gunicorn
 tavily-python
@@ -16,7 +16,4 @@ faiss-cpu
 pypdf
 groq
 numpy
-faiss-cpu
-pypdf
 streamlit
-google.generativeai
