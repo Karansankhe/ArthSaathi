@@ -1,4 +1,4 @@
-# 🪙 ArthSaathi: Autonomous AI Financial Advisor
+# 🪙 ArthSaathi: AI Financial Advisor
 
 ArthSaathi is a sophisticated, multi-agent financial platform designed to provide personalized financial guidance, automated expense tracking, and expert GST advice. It leverages state-of-the-art AI models and a robust RAG (Retrieval-Augmented Generation) pipeline to transform raw financial data into actionable insights.
 
