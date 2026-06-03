@@ -2,7 +2,7 @@
 import os
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
-from starlette.datastructures import URL
+from starlette.datastructures import UR
 
 # Mock request
 class MockRequest:
